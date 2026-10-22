@@ -148,6 +148,7 @@ public sealed partial class Win : Window
         }
 
         Hook(tab, core);
+        AdsHook(tab, core);
 
         // Must be in place before the first page loads. Without it only the
         // shortcuts for the window's own controls work, so a failure here
@@ -159,6 +160,16 @@ public sealed partial class Win : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("[keys] script failed: " + ex.Message);
+        }
+
+        // The first pages must not load before the blocker is ready (a few seconds at most).
+        if (to is not null && !App.Ads.Ready)
+        {
+            await App.Ads.WhenReady(TimeSpan.FromSeconds(5));
+
+            // The tab may have been closed while waiting.
+            if (!_tabs.Contains(tab) || tab.View.CoreWebView2 is null)
+                return tab;
         }
 
         if (to is not null)
@@ -213,6 +224,9 @@ public sealed partial class Win : Window
         core.NewWindowRequested += (s, e) =>
         {
             e.Handled = true;
+            if (AdsBlockPopup(tab, e.Uri))
+                return;
+
             Log.Write("tab", $"page asked for a new window, tabs now {_tabs.Count}");
             _ = Open(e.Uri);
         };

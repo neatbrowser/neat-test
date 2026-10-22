@@ -76,8 +76,35 @@ src/neat/
   pass/clip.cs      SecretClip: copy a password, not in clipboard history or cloud, cleared after 30 seconds
   opts.pass.cs      Settings > Passwords: protection, saved logins, show / copy / delete
   opts.pass.task.cs the cards that page opens: add a login, set or change the NEAT password, confirm a delete
+  ads/ads.cs        the ad blocker (App.Ads): loads the engine in the background, judges requests, popups and pages
+  ads/engine.cs     one loaded filter release behind neat_adblock.dll's C functions (thread-safe, frees itself)
+  ads/native.cs     the C functions of neat_adblock.dll (P/Invoke)
+  ads/filterdir.cs  checks a filter folder against its manifest.json hashes before the engine reads it
+  ads/cosmetic.cs   what the engine says to hide or run on a page (read from its JSON)
+  ads/pagejs.cs     fills in ads/page.js for one host
+  ads/page.js       the script every page gets: scriptlets, hiding by style sheet, generic rules by class and id
+  ads/adurl.cs, dataurl.cs, reqtype.cs, tabads.cs   small helpers: addresses, data: URLs, request types, per-tab state
+  win.ads.cs        the window's side of the blocker: WebResourceRequested, popups, page scripts
+tools/fetch-ads.ps1 downloads neat_adblock.dll and the filter lists into ads-dl\ (CI runs it before the build)
+tests/ads.check/    the blocker's self-checks: C# pieces (dotnet run) and the page script (node page.check.mjs)
 tests/vault.check/  the vault's self-check (plain asserts, no packages), run by CI before the build
 ```
+
+## Ad blocker
+
+Blocking is done by Brave's adblock-rust, built as `neat_adblock.dll` (repository `neat-adblock`),
+fed by the uBlock Origin lists that `neat-filters` rebuilds every 6 hours. At build time
+`tools/fetch-ads.ps1` puts the dll next to `neat.exe` and the lists in a `filters` folder there.
+Without them the app still runs, with no blocker (the log says so: `ads` lines in the log).
+
+What it does today: stops network requests, replaces some with harmless stand-ins (blank script,
+pixel), stops popups, hides elements (cosmetic rules, including generic ones by class and id) and
+runs uBO scriptlets before the page's own scripts. What it does not do yet: `:has-text` and other
+procedural rules, stopping the page itself, `$removeparam`, `$csp`, requests from workers, live
+list updates (the lists are the ones from build time).
+
+Settings (`settings.json`, browser closed): `"Ads": { "On": true, "Off": ["example.com"] }`.
+`On: false` switches the blocker off; `Off` lists hosts where it does nothing.
 
 ## Where data is saved
 

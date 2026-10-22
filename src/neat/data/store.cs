@@ -105,6 +105,9 @@ public sealed class Store
         if (!Harmonies.Valid(Cur.Tint.Harmony))
             Cur.Tint.Harmony = Harmony.Floating;
 
+        Cur.Ads ??= new AdPrefs();
+        Cur.Ads.Off ??= new List<string>();
+
         Cur.Geo ??= new Geo();
         Cur.Geo.W = Math.Clamp(Cur.Geo.W, 640, 10000);
         Cur.Geo.H = Math.Clamp(Cur.Geo.H, 480, 10000);

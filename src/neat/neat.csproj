@@ -70,4 +70,21 @@
     <None Include="$(AppIco)" Link="neat.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The script the blocker gives every page (ads/pagejs.cs fills it in). Embedded, so it
+         cannot go missing next to neat.exe. -->
+    <EmbeddedResource Include="ads\page.js" LogicalName="neat.ads.page.js" />
+  </ItemGroup>
+
+  <!-- The ad blocker's two downloads, put in ads-dl\ by tools\fetch-ads.ps1 (CI runs it before
+       the build): neat_adblock.dll from neatbrowser/neat-adblock, and a filter release from
+       neatbrowser/neat-filters. They go next to neat.exe: the dll in the root, the filters in a
+       "filters" folder. When ads-dl is empty the app still builds and runs, without a blocker. -->
+  <ItemGroup>
+    <None Include="..\..\ads-dl\neat_adblock.dll" Condition="Exists('..\..\ads-dl\neat_adblock.dll')"
+          Link="neat_adblock.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\ads-dl\filters\*" Condition="Exists('..\..\ads-dl\filters\manifest.json')"
+          Link="filters\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

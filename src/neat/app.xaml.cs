@@ -14,6 +14,7 @@ public partial class App : Application
     public static Downloads Dl { get; private set; } = null!;
     public static Search Find { get; private set; } = null!;
     public static Look Look { get; private set; } = null!;
+    internal static Adblock Ads { get; private set; } = null!;
 
     private static Vault? _vault;
 
@@ -52,6 +53,10 @@ public partial class App : Application
         Sess = new Session(Path.Combine(Env.Root, "session.json"));
         Find = new Search(Cfg);
         Look = new Look(Cfg);
+
+        // The blocker builds its engine in the background; the first tab waits for it (see Win.Open).
+        Ads = new Adblock();
+        _ = Ads.Start();
 
         var db = new Db(Path.Combine(Env.Root, "browser.db"));
         Hist = new History(db);
