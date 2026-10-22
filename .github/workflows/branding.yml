@@ -1,0 +1,97 @@
+name: Branding
+
+# Source of truth: browser/branding/official/default2000.png
+# On every change to it, this workflow regenerates, next to it:
+#   default16/24/32/48/64/128/256.png  and  default.ico (multi-size)
+# and commits them back to main.
+#
+# The commit is made with GITHUB_TOKEN, so GitHub does not start other
+# workflows (including Build) for it. The "[skip ci]" in the message is only a
+# second safeguard.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - browser/branding/official/default2000.png
+      - .github/workflows/branding.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two runs must not push at the same time.
+concurrency:
+  group: branding
+  cancel-in-progress: false
+
+jobs:
+  icons:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow
+        run: pip install pillow
+
+      - name: Generate icons
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          from PIL import Image
+
+          SRC = Path("browser/branding/official/default2000.png")
+          OUT = SRC.parent
+          PNG_SIZES = [16, 24, 32, 48, 64, 128, 256]
+          ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
+
+          if not SRC.exists():
+              sys.exit(f"missing source image: {SRC}")
+
+          src = Image.open(SRC).convert("RGBA")
+          if src.width != src.height:
+              sys.exit(f"{SRC} must be square, got {src.width}x{src.height}")
+          if src.width < max(PNG_SIZES):
+              sys.exit(f"{SRC} is too small: {src.width}px")
+
+          def scaled(n):
+              return src.resize((n, n), Image.Resampling.LANCZOS)
+
+          for n in PNG_SIZES:
+              scaled(n).save(OUT / f"default{n}.png", optimize=True)
+
+          # One .ico holding every size; Windows picks the best one per place
+          # (taskbar, Explorer, Alt+Tab, title bar).
+          frames = [scaled(n) for n in ICO_SIZES]
+          frames[-1].save(
+              OUT / "default.ico",
+              format="ICO",
+              sizes=[(n, n) for n in ICO_SIZES],
+              append_images=frames[:-1],
+          )
+
+          print("generated:", ", ".join(sorted(p.name for p in OUT.iterdir())))
+          PY
+
+      - name: Commit generated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add browser/branding/official
+          if git diff --staged --quiet; then
+            echo "Icons already up to date."
+            exit 0
+          fi
+
+          git commit -m "branding: regenerate icons from default2000.png [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
