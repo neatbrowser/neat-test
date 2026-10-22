@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The self-check of the ad blocker's plain-code pieces (src/neat/ads): addresses, data: URLs,
+       request types, cosmetic JSON, the page script, the filter folder check. These files use
+       nothing of WinUI, so it runs on any machine with .NET 8. The page script itself is checked
+       by page.check.mjs (Node). Run from this folder: dotnet run -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>ads.check</AssemblyName>
+    <RootNamespace>adscheck</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\neat\ads\adurl.cs" LinkBase="ads" />
+    <Compile Include="..\..\src\neat\ads\dataurl.cs" LinkBase="ads" />
+    <Compile Include="..\..\src\neat\ads\reqtype.cs" LinkBase="ads" />
+    <Compile Include="..\..\src\neat\ads\cosmetic.cs" LinkBase="ads" />
+    <Compile Include="..\..\src\neat\ads\pagejs.cs" LinkBase="ads" />
+    <Compile Include="..\..\src\neat\ads\filterdir.cs" LinkBase="ads" />
+  </ItemGroup>
+
+</Project>
