@@ -15,6 +15,13 @@ public sealed partial class Win
     /// <summary>Most scripts registered for one page: its own host plus the hosts of its frames.</summary>
     private const int MaxPageScripts = 40;
 
+    /// <summary>
+    /// The longest a request is held back to wait for the page script to be registered. Waiting
+    /// for it without a limit froze every page (the registration did not finish while the
+    /// request was held), so the request is always let go after this.
+    /// </summary>
+    private static readonly TimeSpan MaxHold = TimeSpan.FromMilliseconds(150);
+
     private readonly ConditionalWeakTable<Tab, TabAds> _ads = new();
 
     private TabAds AdsOf(Tab tab) => _ads.GetValue(tab, _ => new TabAds());
@@ -69,6 +76,11 @@ public sealed partial class Win
         }
 
         st.Scripts.Clear();
+        st.MainReg = null;
+
+        // The page's script is prepared now, before its request exists, and not waited for here.
+        if (AdUrl.IsWeb(e.Uri) && App.Ads.Ready && !App.Ads.IsOff(AdUrl.Host(e.Uri)))
+            st.MainReg = AdsPage(core, st, e.Uri, main: true);
     }
 
     /// <summary>One request the page (or one of its frames) is about to make.</summary>
@@ -100,17 +112,19 @@ public sealed partial class Win
         if (main)
         {
             // The page itself is never stopped (there is no way back from a blank page yet);
-            // it only gets its hiding rules.
+            // it only gets its hiding rules, whose script was started at NavigationStarting.
+            var reg = st.MainReg ?? AdsPage(core, st, url, main: true);
             var d = e.GetDeferral();
-            _ = AdsPage(core, st, url, main: true, d);
+            _ = AdsHold(reg, d, url);
             return;
         }
 
         // A document request that is not the page is a frame. One on the page's own host is left alone.
         if (doc && AdUrl.Host(url) == AdUrl.Host(page))
         {
+            var reg = AdsPage(core, st, url, main: false);
             var d = e.GetDeferral();
-            _ = AdsPage(core, st, url, main: false, d);
+            _ = AdsHold(reg, d, url);
             return;
         }
 
@@ -137,8 +151,9 @@ public sealed partial class Win
         if (doc)
         {
             // A frame that is let through still gets the rules for its own host.
+            var reg = AdsPage(core, st, url, main: false);
             var d = e.GetDeferral();
-            _ = AdsPage(core, st, url, main: false, d);
+            _ = AdsHold(reg, d, url);
         }
     }
 
@@ -172,11 +187,35 @@ public sealed partial class Win
     }
 
     /// <summary>
-    /// A document is about to load (the page, or a frame in it): registers the script that hides
-    /// its elements and runs its scriptlets. It runs inside the request's deferral, so the script is
-    /// in place before the document is created.
+    /// Holds a document request back until its page script is registered, but never longer than
+    /// <see cref="MaxHold"/>. Then lets the request go either way.
     /// </summary>
-    private async Task AdsPage(CoreWebView2 core, TabAds st, string url, bool main, Windows.Foundation.Deferral d)
+    private static async Task AdsHold(Task registration, Windows.Foundation.Deferral d, string url)
+    {
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var first = await Task.WhenAny(registration, Task.Delay(MaxHold));
+            if (first == registration)
+                Log.Write("ads", $"page script ready {clock.ElapsedMilliseconds} ms after the request: {AdUrl.Host(url)}");
+            else
+                Log.Write("ads", $"page script NOT ready after {MaxHold.TotalMilliseconds:0} ms, the page goes on without waiting: {AdUrl.Host(url)}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ads", ex, "waiting for the page script failed");
+        }
+        finally
+        {
+            d.Complete();
+        }
+    }
+
+    /// <summary>
+    /// Prepares and registers the script that hides a document's elements and runs its scriptlets
+    /// (for the page, or for a frame in it). Never throws. The caller decides whether to wait.
+    /// </summary>
+    private async Task AdsPage(CoreWebView2 core, TabAds st, string url, bool main)
     {
         try
         {
@@ -215,10 +254,6 @@ public sealed partial class Win
         catch (Exception ex)
         {
             Log.Error("ads", ex, "could not prepare the page rules");
-        }
-        finally
-        {
-            d.Complete();
         }
     }
 

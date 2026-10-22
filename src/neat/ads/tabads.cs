@@ -15,6 +15,9 @@ internal sealed class TabAds
     /// <summary>Counts top-level navigations; tells a script added for an old page from one for the current page.</summary>
     public int Gen;
 
+    /// <summary>The registration of the page's own script, started when its navigation started.</summary>
+    public Task? MainReg;
+
     /// <summary>Requests stopped since the tab last started a new page.</summary>
     public int Blocked;
 
