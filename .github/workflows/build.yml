@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/neat/neat.csproj -p:Platform=x64
+
+      - name: Build
+        run: dotnet build src/neat/neat.csproj --configuration Release --no-restore -p:Platform=x64
+
+      # Produces a plain folder with neat.exe that runs on its own
+      # (self-contained, unpackaged, with the bundled WebView2 runtime).
+      - name: Publish
+        run: dotnet publish src/neat/neat.csproj --configuration Release --no-build -p:Platform=x64 --output publish
+
+      - name: Upload runnable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: neat-win-x64
+          path: publish
+          retention-days: 7
