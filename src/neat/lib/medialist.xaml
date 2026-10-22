@@ -1,0 +1,100 @@
+<UserControl
+    x:Class="neat.MediaList"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:n="using:neat">
+
+    <!-- The grid of the Media section: rounded tiles of files with their thumbnails. Like LibList
+         and DlList (liblist.xaml, dllist.xaml) it is a ListView that only builds the tiles on
+         screen, so thousands of files cost nothing until they are scrolled to. It is a ListView
+         with a wrapping panel and not a GridView on purpose: the ListView resources below are the
+         ones the other lists use, the settings that keep hovering from crashing (see the
+         neat-crash-lessons skill), and a GridView would need its own keys. The code is in
+         medialist.xaml.cs. -->
+    <UserControl.Resources>
+        <!-- Dim text and the fill of a tile. Both colours are set in code (MediaList.Paint), so
+             they follow the window colour; the brushes are changed in place. -->
+        <SolidColorBrush x:Key="libdim"/>
+        <SolidColorBrush x:Key="tilewash"/>
+
+        <!-- One file, as in Zen: just the picture, in the shape it has (not cropped to a square), with
+             rounded corners and no name. It sits in a cell of 140 by 120 (MediaItem.CellW and CellH
+             must match) and is as large as fits, so wide and tall pictures sit side by side in the
+             same row. The picture is a brush on a border of its own size, so the corners are rounded.
+             Until it comes (a cloud-only file, or a kind with no thumbnail, never gets one) a faint
+             tile with a glyph stands in. The name only shows as a tooltip. -->
+        <DataTemplate x:Key="tile" x:DataType="n:MediaItem">
+            <Grid
+                Width="140"
+                Height="120"
+                Background="Transparent"
+                RightTapped="tile_Menu"
+                ToolTipService.ToolTip="{x:Bind Name}">
+                <Grid Visibility="{x:Bind GlyphVis, Mode=OneWay}">
+                    <Border CornerRadius="10" Background="{StaticResource tilewash}"/>
+                    <FontIcon
+                        Glyph="{x:Bind Glyph}"
+                        FontSize="32"
+                        Foreground="{StaticResource libdim}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"/>
+                </Grid>
+
+                <Border
+                    Width="{x:Bind ThumbW, Mode=OneWay}"
+                    Height="{x:Bind ThumbH, Mode=OneWay}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    CornerRadius="10"
+                    Background="{x:Bind Fill, Mode=OneWay}"
+                    Visibility="{x:Bind ThumbVis, Mode=OneWay}"/>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <ListView
+            x:Name="list"
+            ItemTemplate="{StaticResource tile}"
+            SelectionMode="None"
+            IsItemClickEnabled="True"
+            ItemClick="list_ItemClick"
+            ContainerContentChanging="list_Row">
+            <!-- Tiles wrap from left to right and the rows are centred in the panel. -->
+            <ListView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsWrapGrid Orientation="Horizontal" HorizontalAlignment="Center"/>
+                </ItemsPanelTemplate>
+            </ListView.ItemsPanel>
+
+            <!-- The same settings as the other Library lists: washes on hover and press, coloured in
+                 MediaList.Paint, and the selection accent bar switched off for real (hovering can
+                 otherwise crash Microsoft.UI.Xaml.dll; see the neat-crash-lessons skill). Nothing here
+                 is ever selected, but the code path is removed anyway. -->
+            <ListView.Resources>
+                <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver"/>
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed"/>
+            </ListView.Resources>
+        </ListView>
+
+        <!-- "No media found" and the like, in the middle of the list. -->
+        <TextBlock
+            x:Name="empty"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontSize="13"
+            Foreground="{StaticResource libdim}"
+            Visibility="Collapsed"/>
+
+        <!-- Shown while the first scan has nothing to show yet. -->
+        <ProgressRing
+            x:Name="busy"
+            Width="28"
+            Height="28"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            IsActive="False"
+            Visibility="Collapsed"/>
+    </Grid>
+</UserControl>

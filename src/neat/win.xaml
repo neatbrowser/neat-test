@@ -1,0 +1,558 @@
+<Window
+    x:Class="neat.Win"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:n="using:neat">
+
+    <Grid
+        x:Name="root"
+        Background="{StaticResource bg}"
+        RequestedTheme="Dark"
+        KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Glow and wash: the window gradient drawn as several layers that fade to clear, as Zen
+             does, so the system blur shows through between them. They are under everything else,
+             grain included. Glow holds the two round layers (three dots only) and wash the
+             straight ones, above it. Both are filled in look/win.wash.cs. -->
+        <Grid x:Name="glow" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed"/>
+        <Grid x:Name="wash" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed"/>
+
+        <!-- Grain: fine noise laid over the window colour, under everything else, so it
+             shows wherever the colour shows (title bar, docked sidebar, the margin round the
+             page). Texture 0 hides it. The tiles are added in look/win.grain.cs. -->
+        <Canvas x:Name="grain" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed"/>
+
+        <!-- ================= Title bar (always visible) =================
+             Logo, sidebar toggle and navigation on the left, the address chip
+             in the middle. The system draws minimize / maximize / close over
+             the right end; the last column only keeps our content clear of
+             them. The empty parts of this bar drag the window; the buttons
+             are carved out as click-through regions in win.bar.cs. -->
+        <Grid x:Name="bar" Grid.Row="0" Background="Transparent" Padding="8,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="146"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Column="0"
+                Orientation="Horizontal"
+                Spacing="2"
+                VerticalAlignment="Center">
+
+                <!-- Stand-in logo until NEAT has one. Its menu comes later. -->
+                <Border
+                    Width="22"
+                    Height="22"
+                    Margin="0,0,6,0"
+                    CornerRadius="6"
+                    Background="#33FFFFFF">
+                    <TextBlock
+                        Text="N"
+                        FontSize="12"
+                        FontWeight="Bold"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Sidebar toggle: DockLeft (E90C) from Segoe Fluent Icons, a rounded panel with a bar down its left side. -->
+                <Button
+                    x:Name="tog"
+                    Click="tog_Click"
+                    Height="28"
+                    Padding="8,0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    ToolTipService.ToolTip="Toggle sidebar (Ctrl+S)">
+                    <FontIcon Glyph="&#xE90C;" FontSize="14"/>
+                </Button>
+
+                <Button x:Name="back" Click="back_Click" Height="28" Padding="8,0" Background="Transparent" BorderThickness="0">
+                    <FontIcon Glyph="&#xE72B;" FontSize="14"/>
+                </Button>
+                <Button x:Name="fwd" Click="fwd_Click" Height="28" Padding="8,0" Background="Transparent" BorderThickness="0">
+                    <FontIcon Glyph="&#xE72A;" FontSize="14"/>
+                </Button>
+                <Button x:Name="reload" Click="reload_Click" Height="28" Padding="8,0" Background="Transparent" BorderThickness="0">
+                    <FontIcon Glyph="&#xE72C;" FontSize="14"/>
+                </Button>
+            </StackPanel>
+
+            <!-- Address chip: copy link, the site's domain, bookmark star. -->
+            <Border
+                x:Name="pill"
+                Grid.Column="1"
+                MaxWidth="360"
+                Height="26"
+                Margin="12,0"
+                Padding="2,0"
+                CornerRadius="8"
+                Background="#1AFFFFFF">
+                <Grid ColumnSpacing="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        x:Name="copy"
+                        Grid.Column="0"
+                        Click="copy_Click"
+                        Width="30"
+                        Height="22"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Copy Link (Ctrl+Shift+C)">
+                        <FontIcon x:Name="copyic" Glyph="&#xE71B;" FontSize="12"/>
+                    </Button>
+
+                    <!-- The domain is a button: it opens the command bar to edit this tab's address. -->
+                    <Button
+                        x:Name="domb"
+                        Grid.Column="1"
+                        Click="domb_Click"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Height="22"
+                        Padding="4,0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Search or enter address (Ctrl+L)">
+                        <TextBlock
+                            x:Name="dom"
+                            Text="New Tab"
+                            FontSize="12"
+                            TextTrimming="CharacterEllipsis"/>
+                    </Button>
+
+                    <Button
+                        x:Name="star"
+                        Grid.Column="2"
+                        Click="star_Click"
+                        Width="30"
+                        Height="22"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Bookmark this page">
+                        <FontIcon x:Name="staric" Glyph="&#xE734;" FontSize="12"/>
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ================= Body (below the title bar) ================= -->
+        <Grid x:Name="body" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="col0" Width="260"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Web frame with rounded corners. -->
+            <Border
+                x:Name="frame"
+                Grid.Column="1"
+                Margin="0,0,6,6"
+                CornerRadius="{StaticResource r_web}"
+                Background="#FF0F0F0F">
+                <!-- Every tab's web view lives here; only the selected one is visible. -->
+                <Grid x:Name="host"/>
+            </Border>
+
+            <!-- The Library (lib/libview.xaml), a panel of its own, as in Zen: it is not part of the
+                 sidebar and does not depend on the sidebar's state. It has no background, so the
+                 window colour and its grain run straight through it. While it is open the sidebar
+                 steps aside and the page is pushed to the right, keeping its size (win.lib.cs).
+                 Collapsed until win.lib.cs opens it. -->
+            <Border
+                x:Name="libpanel"
+                Grid.ColumnSpan="2"
+                Width="420"
+                HorizontalAlignment="Left"
+                Margin="6,6,0,6"
+                Padding="10"
+                Visibility="Collapsed">
+                <n:LibView x:Name="lib"/>
+            </Border>
+
+            <!-- Left-edge hot zone. Only present while the sidebar is hidden:
+                 the pointer touching it makes the sidebar float over the page. -->
+            <Grid
+                x:Name="hot"
+                Grid.ColumnSpan="2"
+                Width="8"
+                HorizontalAlignment="Left"
+                Background="Transparent"
+                Visibility="Collapsed"
+                PointerEntered="hot_In"
+                PointerExited="hot_Out"/>
+
+            <!-- Sidebar: one element, three states (see win.side.cs): docked
+                 beside the page, hidden, or floating over the page while the
+                 pointer is at the left edge. It lives in a layer spanning both
+                 columns so it can overlap the page; column 0 only reserves its
+                 space while docked. Docked, it has no panel of its own: the
+                 window gradient runs straight from the title bar through it.
+                 Only the floating sidebar gets a solid, bordered panel. -->
+            <Border
+                x:Name="side"
+                Grid.ColumnSpan="2"
+                Width="248"
+                HorizontalAlignment="Left"
+                Margin="{StaticResource pad}"
+                Padding="10"
+                CornerRadius="{StaticResource r_side}"
+                BorderBrush="Transparent"
+                BorderThickness="1"
+                Background="Transparent"
+                PointerEntered="side_In"
+                PointerExited="side_Out">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- The window's layers on the floating panel, under everything else in it (the grain
+                         below goes over them). Over the blur the window is drawn as layers, and an opaque
+                         panel has to carry the same ones; look/win.sidewash.cs fills this in, pulls it out
+                         over the panel's padding and hides it while the sidebar is docked. -->
+                    <Border
+                        x:Name="sidewash"
+                        Grid.RowSpan="3"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"/>
+
+                    <!-- Grain for the floating panel, under everything else in it. A solid panel hides the
+                         window's grain, so it carries its own; win.grain.cs (SideGrain) fills it in, pulls
+                         it out over the panel's padding and hides it while the sidebar is docked. -->
+                    <Border
+                        x:Name="sidegrain"
+                        Grid.RowSpan="3"
+                        CornerRadius="{StaticResource r_side}"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"/>
+
+                    <!-- Opens the command bar overlay; its result opens in a new tab. -->
+                    <Button
+                        x:Name="newtab"
+                        Grid.Row="0"
+                        Click="newtab_Click"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Background="Transparent"
+                        BorderThickness="0">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE710;" FontSize="14"/>
+                            <TextBlock Text="New Tab"/>
+                        </StackPanel>
+                    </Button>
+
+                <!-- One row per open tab. Selecting a row shows that tab. -->
+                <ListView
+                    x:Name="list"
+                    Grid.Row="1"
+                    SelectionMode="Single"
+                    SelectionChanged="list_SelectionChanged">
+                    <!-- Soft pill for the selected tab and a light wash on hover,
+                         no accent bar. The accent bar is switched off for real
+                         (not just painted transparent): with it on, hovering a
+                         selected row can reach XAML code that sets the bar's
+                         background without checking that the bar exists, and
+                         Microsoft.UI.Xaml.dll crashes with an access violation
+                         (CListViewBaseItemChrome::SetSelectionIndicatorBackground). -->
+                    <ListView.Resources>
+                        <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1AFFFFFF"/>
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#26FFFFFF"/>
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#33FFFFFF"/>
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#40FFFFFF"/>
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#33FFFFFF"/>
+                        <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent"/>
+                        <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent"/>
+                        <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent"/>
+                    </ListView.Resources>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="n:Tab">
+                            <Grid
+                                Height="36"
+                                ColumnSpacing="10"
+                                Background="Transparent"
+                                PointerEntered="row_In"
+                                PointerExited="row_Out">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="28"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Image
+                                    Width="16"
+                                    Height="16"
+                                    Source="{x:Bind Icon, Mode=OneWay}"
+                                    Visibility="{x:Bind IconVis, Mode=OneWay}"/>
+                                <FontIcon
+                                    Glyph="&#xE774;"
+                                    FontSize="14"
+                                    Visibility="{x:Bind GlyphVis, Mode=OneWay}"/>
+
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    TextTrimming="CharacterEllipsis"
+                                    Text="{x:Bind Title, Mode=OneWay}"/>
+
+                                <!-- Shown only while the pointer is over the row. -->
+                                <Button
+                                    Grid.Column="2"
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Visibility="Collapsed"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="shut_Click">
+                                    <FontIcon Glyph="&#xE711;" FontSize="10"/>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                    <Grid x:Name="foot" Grid.Row="2" ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Library (win.lib.cs). Library (E8F1) is in both Segoe Fluent Icons and Segoe MDL2 Assets. -->
+                        <Button
+                            x:Name="libbtn"
+                            Click="libbtn_Click"
+                            VerticalAlignment="Bottom"
+                            Padding="8,6"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Library (Ctrl+H)">
+                            <!-- The dot shows while a download is going (win.dl.cs); its colour is set in code. -->
+                            <Grid>
+                                <FontIcon Glyph="&#xE8F1;" FontSize="14"/>
+                                <Ellipse
+                                    x:Name="libdot"
+                                    Width="7"
+                                    Height="7"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    Margin="0,-3,-4,0"
+                                    Visibility="Collapsed"/>
+                            </Grid>
+                        </Button>
+
+                        <TextBlock
+                            x:Name="info"
+                            Grid.Column="1"
+                            VerticalAlignment="Bottom"
+                            FontSize="11"
+                            Opacity="0.6"
+                            TextWrapping="Wrap"/>
+
+                        <!-- Window colour: light or dark, brightness, gradient, and ready-made hues. -->
+                        <Button
+                            x:Name="paint"
+                            Grid.Column="2"
+                            VerticalAlignment="Bottom"
+                            Padding="8,6"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Window colour">
+                            <FontIcon Glyph="&#xE790;" FontSize="14"/>
+                            <Button.Flyout>
+                                <Flyout x:Name="fly" Placement="TopEdgeAlignedLeft">
+                                    <n:Picker x:Name="picker"/>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
+                        <!-- Settings window (win.opts.cs). Setting (E713) is in both Segoe Fluent Icons and Segoe MDL2 Assets. -->
+                        <Button
+                            x:Name="gear"
+                            Grid.Column="3"
+                            Click="gear_Click"
+                            VerticalAlignment="Bottom"
+                            Padding="8,6"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Settings (Ctrl+,)">
+                            <FontIcon Glyph="&#xE713;" FontSize="14"/>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ================= Command bar overlay (hidden by default) ================= -->
+        <Grid
+            x:Name="scrim"
+            Grid.RowSpan="2"
+            Visibility="Collapsed"
+            Background="#99000000"
+            Tapped="scrim_Tapped">
+            <!-- The panel is wide and softly rounded. Its fill and border are solid colours: with a
+                 see-through fill and a see-through border laid over each other the edge came out
+                 uneven on the curves. The curve is also bigger now, and the box inside it has no
+                 frame of its own, so there is a single outline instead of one inside another. -->
+            <!-- Where the panel sits. This slot is as tall as the panel is at its fullest: 16 (padding)
+                 + 2 (frame) + 52 (box) + 9 (line) + 5 rows of 54, and it is centred in the window.
+                 The panel hangs from the top of the slot, so the box stays put and the list grows
+                 downward under it, as in Arc and Zen. If a row's height changes, change the 349
+                 and the list's MaxHeight with it. -->
+            <Grid
+                MaxWidth="720"
+                Height="349"
+                Margin="28,0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center">
+                <Border
+                    VerticalAlignment="Top"
+                    Padding="8"
+                    CornerRadius="22"
+                    Background="#FF121212"
+                    BorderBrush="#FF2E2E2E"
+                    BorderThickness="1"
+                    RequestedTheme="Dark"
+                    Tapped="panel_Tapped">
+                    <StackPanel>
+                        <Grid Height="52">
+                            <FontIcon
+                                Glyph="&#xE721;"
+                                FontSize="18"
+                                Margin="14,0,0,0"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Foreground="#B3FFFFFF"/>
+
+                            <!-- Second typing test. -->
+                            <!-- The box draws no background, frame or blue underline of its own. -->
+                            <TextBox
+                                x:Name="q"
+                                Margin="48,0,8,0"
+                                Padding="0,12"
+                                VerticalAlignment="Center"
+                                FontSize="18"
+                                PlaceholderText="Search or Enter URL..."
+                                KeyDown="q_KeyDown"
+                                TextChanged="q_TextChanged">
+                                <TextBox.Resources>
+                                    <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                                    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent"/>
+                                </TextBox.Resources>
+                            </TextBox>
+                        </Grid>
+
+                        <!-- Thin line between the box and the list; shown together with the list (win.cmd.cs). -->
+                        <Border
+                            x:Name="rule"
+                            Height="1"
+                            Margin="6,2,6,6"
+                            Visibility="Collapsed"
+                            Background="#1FFFFFFF"/>
+
+                        <!-- The suggestions (win.cmd.cs). Five rows show (MaxHeight = 5 x 54) and the rest
+                             scroll. The pick is moved from code with the arrow keys while the cursor stays in
+                             the box above. Same selection setup as the tab list: the selection indicator is
+                             switched off for real, not just painted transparent (see the comment on that list).
+                             The three "Selected" colours below are only a start: win.cmd.cs sets them from the
+                             window's main colour each time the bar opens. The panel is always dark, so it is
+                             always drawn with the dark theme (RequestedTheme above). -->
+                        <ListView
+                            x:Name="hints"
+                            Visibility="Collapsed"
+                            MaxHeight="270"
+                            SelectionMode="Single"
+                            IsItemClickEnabled="True"
+                            ItemClick="hints_ItemClick">
+                            <ListView.Resources>
+                                <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#1AFFFFFF"/>
+                                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#26FFFFFF"/>
+                                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#33FFFFFF"/>
+                                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#40FFFFFF"/>
+                                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#33FFFFFF"/>
+                                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent"/>
+                                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent"/>
+                                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent"/>
+                            </ListView.Resources>
+
+                            <!-- Each row is a rounded block. 14 is the panel's curve (22) minus its
+                                 padding (8), so the curves of the row and the panel run in parallel. -->
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                    <Setter Property="CornerRadius" Value="14"/>
+                                    <Setter Property="Margin" Value="0,1"/>
+                                    <Setter Property="Padding" Value="14,0"/>
+                                    <Setter Property="MinHeight" Value="0"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="n:Hint">
+                                    <Grid
+                                        Height="52"
+                                        ColumnSpacing="14"
+                                        Background="Transparent">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Image
+                                            Width="20"
+                                            Height="20"
+                                            Source="{x:Bind Icon, Mode=OneWay}"
+                                            Visibility="{x:Bind IconVis, Mode=OneWay}"/>
+                                        <FontIcon
+                                            Glyph="{x:Bind Glyph}"
+                                            FontSize="16"
+                                            Visibility="{x:Bind GlyphVis, Mode=OneWay}"/>
+
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            FontSize="15"
+                                            TextTrimming="CharacterEllipsis">
+                                            <Run Text="{x:Bind Title}"/><Run Text="{x:Bind Sub}" Foreground="#99FFFFFF"/>
+                                        </TextBlock>
+
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            FontSize="13"
+                                            Foreground="#B3FFFFFF"
+                                            Text="{x:Bind Tag}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

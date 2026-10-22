@@ -1,0 +1,71 @@
+<UserControl
+    x:Class="neat.LibView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    KeyDown="OnKey">
+
+    <!-- The Library: what the sidebar shows instead of the tab list while it is open
+         (hosted in win.xaml, opened and closed by win.lib.cs). A rail of sections on the
+         left, a search row and the section's page on the right, a back arrow at the
+         bottom-left. The sections are LibPage classes; the rail buttons are made in code.
+         Esc is handled in OnKey: it is not in the shortcut table on purpose, because
+         everything in that table is also swallowed inside web pages. -->
+    <Grid RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel x:Name="rail" Spacing="4"/>
+
+            <Grid Grid.Column="1" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Hidden for sections that have nothing to search. -->
+                <Grid x:Name="top" ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox x:Name="search" TextChanged="search_TextChanged"/>
+
+                    <!-- The menu is set by the page (LibPage.Filter). Filter (E71C) is in both Segoe Fluent Icons and Segoe MDL2 Assets. -->
+                    <Button
+                        x:Name="filt"
+                        Grid.Column="1"
+                        Width="36"
+                        Height="32"
+                        Padding="0"
+                        ToolTipService.ToolTip="Filter">
+                        <FontIcon Glyph="&#xE71C;" FontSize="14"/>
+                    </Button>
+                </Grid>
+
+                <Border x:Name="host" Grid.Row="1"/>
+            </Grid>
+        </Grid>
+
+        <!-- Back (E72B) is in both Segoe Fluent Icons and Segoe MDL2 Assets. -->
+        <Button
+            x:Name="back"
+            Grid.Row="1"
+            HorizontalAlignment="Left"
+            Padding="8,6"
+            Background="Transparent"
+            BorderThickness="0"
+            Click="back_Click"
+            ToolTipService.ToolTip="Back (Esc)">
+            <FontIcon Glyph="&#xE72B;" FontSize="14"/>
+        </Button>
+    </Grid>
+</UserControl>

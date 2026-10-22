@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The self-check of the password vault (src/neat/vault). It compiles the vault's own
+       source files, which use nothing of WinUI, so it runs on any machine with .NET 8 and
+       needs no test package. CI runs it before the app is built (see .github/workflows/build.yml).
+       Run it by hand from the repository root: dotnet run, with the option for this
+       project folder (tests/vault.check). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>vault.check</AssemblyName>
+    <RootNamespace>vaultcheck</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\neat\vault\*.cs" LinkBase="vault" />
+  </ItemGroup>
+
+</Project>

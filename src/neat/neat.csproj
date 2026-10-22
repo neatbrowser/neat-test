@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+
+    <AssemblyName>neat</AssemblyName>
+    <RootNamespace>neat</RootNamespace>
+    <Product>NEAT Browser</Product>
+    <Version>0.16</Version>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- The icon file, named once here. It is embedded into neat.exe (ApplicationIcon):
+         this is the icon Explorer, the taskbar and any shortcut to neat.exe (desktop,
+         Start menu) show. The same file is also copied next to neat.exe, see the
+         ItemGroup at the end, for the settings window to load at run time. -->
+    <AppIco>..\..\browser\branding\official\default.ico</AppIco>
+    <ApplicationIcon>$(AppIco)</ApplicationIcon>
+
+    <!-- x64 only for now: the bundled Fixed Version WebView2 runtime below
+         is the x64 build. Always build with -p:Platform=x64. -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+
+    <!-- Unpackaged + self-contained: a plain folder with neat.exe that
+         runs without MSIX packaging and without a separately installed
+         Windows App Runtime or .NET runtime. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows App SDK 2.5.1 (stable, 16 Sep 2026). Pinned to an exact version
+         on purpose so builds are reproducible. Moved up from 1.8.12 to pick up
+         the XAML crash fixes of the 2.x line (ListView, popups, shutdown).
+         From 2.0 on the version is plain SemVer (no more 1.8.260921001 style).
+         The metapackage brings in the WinUI 3 WebView2 control, the Windows
+         SDK build tools and CsWinRT transitively, so none of those are listed
+         here. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+
+    <!-- Fixed Version WebView2 runtime, bundled next to neat.exe in a
+         "WebView2" folder (copied automatically on build/publish). Same
+         community package Mozart uses. It is large (~250 MB), so
+         the first restore is slow; that is expected. See
+         web/env.cs for how the app points WebView2 at it.
+         Since 152.0.4191.53 the runtime no longer fits in one NuGet package,
+         so it is split in two: both are required, and they must stay on the
+         same version. -->
+    <PackageReference Include="WebView2.Runtime.X64" Version="155.0.4283.60" />
+    <PackageReference Include="WebView2.Runtime.X64.Core" Version="155.0.4283.60" />
+
+    <!-- SQLite for history and bookmarks (browser.db). Same version Mozart uses. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The icon file from AppIco above, copied next to neat.exe as neat.ico (build and
+         publish). The settings window gives itself this icon in opts.xaml.cs; the exe's
+         embedded icon cannot be handed to a window by path. -->
+    <None Include="$(AppIco)" Link="neat.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,75 @@
+<UserControl
+    x:Class="neat.Picker"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="300">
+
+    <!-- The window colour menu: light or dark, the colour pad with its dots, how much of the
+         colour shows, the texture dial and ready-made hues. It is the content of the sidebar's
+         colour flyout (win.xaml) and the Appearance page of the settings window (opts.look.cs).
+         Its code is in picker.xaml.cs, picker.pad.cs and picker.dial.cs.
+
+         The menu is 300 wide unless the host says otherwise (the settings page does). 300 is
+         what the row of nine swatches needs (9 x 26 + 8 x 6 = 282). The colour pad takes two
+         thirds of the width, see picker.xaml.cs. -->
+    <StackPanel Spacing="12">
+        <ToggleSwitch
+            x:Name="darksw"
+            OnContent="Dark"
+            OffContent="Light"
+            Toggled="darksw_Toggled"/>
+        <!-- Colour pad: the angle round the centre is the colour, the distance from the centre is how light it is (dark in the middle, light at the rim). Drag the big dot, or click to send it there; the small dots follow it. Right click a dot to remove it. -->
+        <Grid x:Name="square" Width="200" Height="200" HorizontalAlignment="Center" Background="Transparent"
+              PointerPressed="square_Down"
+              PointerMoved="square_Move"
+              PointerReleased="square_Up"
+              PointerCaptureLost="square_Lost">
+            <Ellipse Fill="#18808080" Stroke="#40808080" StrokeThickness="1" IsHitTestVisible="False"/>
+            <Canvas x:Name="dots" IsHitTestVisible="False">
+                <Ellipse
+                    x:Name="dot"
+                    Width="18"
+                    Height="18"
+                    Stroke="White"
+                    StrokeThickness="2"/>
+            </Canvas>
+        </Grid>
+        <!-- Under the pad: remove a dot, change how the dots relate, add a dot. -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+            <Button x:Name="minus" Click="minus_Click" Height="28" Padding="8,0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Remove a colour">
+                <FontIcon Glyph="&#xE738;" FontSize="14"/>
+            </Button>
+            <Button x:Name="harm" Click="harm_Click" MinWidth="150" Height="28" Padding="11,0" ToolTipService.ToolTip="Change how the colours relate"/>
+            <Button x:Name="plus" Click="plus_Click" Height="28" Padding="8,0" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Add a colour">
+                <FontIcon Glyph="&#xE710;" FontSize="14"/>
+            </Button>
+        </StackPanel>
+        <!-- Same limits as Look.MinOpacity and Look.MaxOpacity. -->
+        <Slider
+            x:Name="opacity"
+            Header="Opacity"
+            Minimum="0.25"
+            Maximum="0.8"
+            StepFrequency="0.01"
+            ValueChanged="opacity_Changed"/>
+
+        <!-- Texture dial: sixteen positions, clockwise from the top. Turn it (press and drag, or click a position) to set how strong the grain is. -->
+        <TextBlock Text="Texture"/>
+        <Grid
+            x:Name="dial"
+            Width="80"
+            Height="80"
+            HorizontalAlignment="Center"
+            Background="Transparent"
+            PointerPressed="dial_Down"
+            PointerMoved="dial_Move"
+            PointerReleased="dial_Up"
+            PointerCaptureLost="dial_Lost"
+            ToolTipService.ToolTip="Texture">
+            <Canvas x:Name="ring" IsHitTestVisible="False">
+                <Border x:Name="knob" Width="6" Height="12" CornerRadius="2"/>
+            </Canvas>
+        </Grid>
+        <StackPanel x:Name="sw" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6"/>
+    </StackPanel>
+</UserControl>
