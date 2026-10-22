@@ -143,7 +143,7 @@ public sealed partial class Win
     }
 
     /// <summary>Answers a request with the engine's stand-in resource (a blank script, a pixel, ...).</summary>
-    private async Task AdsRedirect(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string dataUrl, CoreWebView2Deferral d)
+    private async Task AdsRedirect(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string dataUrl, Windows.Foundation.Deferral d)
     {
         try
         {
@@ -176,7 +176,7 @@ public sealed partial class Win
     /// its elements and runs its scriptlets. It runs inside the request's deferral, so the script is
     /// in place before the document is created.
     /// </summary>
-    private async Task AdsPage(CoreWebView2 core, TabAds st, string url, bool main, CoreWebView2Deferral d)
+    private async Task AdsPage(CoreWebView2 core, TabAds st, string url, bool main, Windows.Foundation.Deferral d)
     {
         try
         {
