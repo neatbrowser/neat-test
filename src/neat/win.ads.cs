@@ -136,7 +136,7 @@ public sealed partial class Win
             st.Blocked++;
             e.Response = doc
                 ? core.Environment.CreateWebResourceResponse(null!, 200, "OK", "Content-Type: text/html")
-                : core.Environment.CreateWebResourceResponse(null!, 403, "Blocked", "Cache-Control: no-store");
+                : Refused(core);
             return;
         }
 
@@ -156,6 +156,17 @@ public sealed partial class Win
             _ = AdsHold(reg, d, url);
         }
     }
+
+    /// <summary>
+    /// The answer for a request that is stopped. The page must see a failed connection, as it does
+    /// with uBO: a 403 reply counts as "the host answered" for fetch and XHR, and ad-block tests
+    /// (and some sites' own checks) read that as "not blocked". A redirect to a data: address is
+    /// refused by the browser itself for every kind of request, which the page sees as a network
+    /// error. (Tried in Chromium: fetch rejects, XHR and script/image loads report an error.)
+    /// </summary>
+    private static CoreWebView2WebResourceResponse Refused(CoreWebView2 core) =>
+        core.Environment.CreateWebResourceResponse(
+            null!, 302, "Found", "Location: data:,\r\nCache-Control: no-store");
 
     /// <summary>Answers a request with the engine's stand-in resource (a blank script, a pixel, ...).</summary>
     private async Task AdsRedirect(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string dataUrl, Windows.Foundation.Deferral d)
