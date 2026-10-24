@@ -102,4 +102,11 @@ public sealed class AdPrefs
 
     /// <summary>Hosts (like "example.com") where the blocker does nothing.</summary>
     public List<string> Off { get; set; } = new();
+
+    /// <summary>
+    /// True writes one line per request to ads-requests.tsv next to settings.json (what was asked,
+    /// what was answered, what was skipped and why). For finding out why a host got through. Read
+    /// once at start, so it applies after a restart.
+    /// </summary>
+    public bool Log { get; set; }
 }

@@ -87,14 +87,26 @@ public sealed partial class Win
     private void AdsRequest(Tab tab, CoreWebView2 core, TabAds st, CoreWebView2WebResourceRequestedEventArgs e)
     {
         var ads = App.Ads;
-        if (!ads.Ready)
-            return;
-
         var url = e.Request.Uri;
-        if (!AdUrl.IsWeb(url))
-            return;
-
         var context = e.ResourceContext;
+        var kind = context.ToString();
+        var method = e.Request.Method;
+        var logging = AdRequestLog.Enabled;
+
+        if (!ads.Ready)
+        {
+            if (logging)
+                AdRequestLog.Add("skip:engine-not-ready", kind, method, st.Page, url);
+            return;
+        }
+
+        if (!AdUrl.IsWeb(url))
+        {
+            if (logging)
+                AdRequestLog.Add("skip:not-web", kind, method, st.Page, url);
+            return;
+        }
+
         var doc = context == CoreWebView2WebResourceContext.Document;
 
         // The page's own document is the first one requested after NavigationStarting. The hosts
@@ -107,12 +119,19 @@ public sealed partial class Win
         // The page asking is the page the tab shows; for the page itself it is the page.
         var page = main ? url : st.Page;
         if (ads.IsOff(AdUrl.Host(page)))
+        {
+            if (logging)
+                AdRequestLog.Add("skip:blocker-off-for-page", kind, method, page, url);
             return;
+        }
 
         if (main)
         {
             // The page itself is never stopped (there is no way back from a blank page yet);
             // it only gets its hiding rules, whose script was started at NavigationStarting.
+            if (logging)
+                AdRequestLog.Add("skip:main-page", kind, method, page, url);
+
             var reg = st.MainReg ?? AdsPage(core, st, url, main: true);
             var d = e.GetDeferral();
             _ = AdsHold(reg, d, url);
@@ -122,17 +141,23 @@ public sealed partial class Win
         // A document request that is not the page is a frame. One on the page's own host is left alone.
         if (doc && AdUrl.Host(url) == AdUrl.Host(page))
         {
+            if (logging)
+                AdRequestLog.Add("skip:frame-same-host", kind, method, page, url);
+
             var reg = AdsPage(core, st, url, main: false);
             var d = e.GetDeferral();
             _ = AdsHold(reg, d, url);
             return;
         }
 
-        var verdict = ads.Check(url, page, ReqType.From(context.ToString(), false), e.Request.Method);
+        var verdict = ads.Check(url, page, ReqType.From(kind, false), method);
 
         if (verdict.Action == AdAction.Block
             || (verdict.Action == AdAction.Redirect && !DataUrl.TryParse(verdict.Redirect, out _, out _)))
         {
+            if (logging)
+                AdRequestLog.Add(verdict.Action == AdAction.Block ? "block" : "block:redirect-unusable", kind, method, page, url);
+
             st.Blocked++;
             e.Response = doc
                 ? core.Environment.CreateWebResourceResponse(null!, 200, "OK", "Content-Type: text/html")
@@ -142,11 +167,17 @@ public sealed partial class Win
 
         if (verdict.Action == AdAction.Redirect)
         {
+            if (logging)
+                AdRequestLog.Add("redirect", kind, method, page, url);
+
             st.Blocked++;
             var d = e.GetDeferral();
             _ = AdsRedirect(core, e, verdict.Redirect!, d);
             return;
         }
+
+        if (logging)
+            AdRequestLog.Add("allow", kind, method, page, url);
 
         if (doc)
         {

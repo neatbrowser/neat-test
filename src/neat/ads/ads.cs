@@ -50,6 +50,8 @@ internal sealed class Adblock
     {
         try
         {
+            AdRequestLog.Start(App.Cfg.Cur.Ads.Log);
+
             if (!On)
             {
                 Log.Write("ads", "blocker is switched off in settings");

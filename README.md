@@ -83,6 +83,7 @@ src/neat/
   ads/cosmetic.cs   what the engine says to hide or run on a page (read from its JSON)
   ads/pagejs.cs     fills in ads/page.js for one host
   ads/page.js       the script every page gets: scriptlets, hiding by style sheet, generic rules by class and id
+  ads/requestlog.cs  optional one-line-per-request log (ads-requests.tsv), for finding out why a host got through
   ads/adurl.cs, dataurl.cs, reqtype.cs, tabads.cs   small helpers: addresses, data: URLs, request types, per-tab state
   win.ads.cs        the window's side of the blocker: WebResourceRequested, popups, page scripts
 tools/fetch-ads.ps1 downloads neat_adblock.dll and the filter lists into ads-dl\ (CI runs it before the build)
