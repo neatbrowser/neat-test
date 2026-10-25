@@ -77,6 +77,7 @@ public sealed partial class Win
 
         st.Scripts.Clear();
         st.MainReg = null;
+        st.MainJs = null;
 
         // The page's script is prepared now, before its request exists, and not waited for here.
         if (AdUrl.IsWeb(e.Uri) && App.Ads.Ready && !App.Ads.IsOff(AdUrl.Host(e.Uri)))
@@ -134,7 +135,7 @@ public sealed partial class Win
 
             var reg = st.MainReg ?? AdsPage(core, st, url, main: true);
             var d = e.GetDeferral();
-            _ = AdsHold(reg, d, url);
+            _ = AdsHold(reg, d, url, core, st, main: true);
             return;
         }
 
@@ -146,7 +147,7 @@ public sealed partial class Win
 
             var reg = AdsPage(core, st, url, main: false);
             var d = e.GetDeferral();
-            _ = AdsHold(reg, d, url);
+            _ = AdsHold(reg, d, url, core, st, main: false);
             return;
         }
 
@@ -184,7 +185,7 @@ public sealed partial class Win
             // A frame that is let through still gets the rules for its own host.
             var reg = AdsPage(core, st, url, main: false);
             var d = e.GetDeferral();
-            _ = AdsHold(reg, d, url);
+            _ = AdsHold(reg, d, url, core, st, main: false);
         }
     }
 
@@ -231,17 +232,30 @@ public sealed partial class Win
     /// <summary>
     /// Holds a document request back until its page script is registered, but never longer than
     /// <see cref="MaxHold"/>. Then lets the request go either way.
+    ///
+    /// Registering a script can take a second or more (WebView2 does it when its browser process
+    /// has time, for example while it starts a process for another site), and a page that started
+    /// without it would have neither the scriptlets nor the hiding. So for the page itself, when
+    /// the registration is late, the script is also run in the page as soon as it is registered.
+    /// The script runs only once per document, so being run twice does no harm.
     /// </summary>
-    private static async Task AdsHold(Task registration, Windows.Foundation.Deferral d, string url)
+    private async Task AdsHold(Task registration, Windows.Foundation.Deferral d, string url, CoreWebView2 core, TabAds st, bool main)
     {
+        var gen = st.Gen;
         try
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var first = await Task.WhenAny(registration, Task.Delay(MaxHold));
             if (first == registration)
+            {
                 Log.Write("ads", $"page script ready {clock.ElapsedMilliseconds} ms after the request: {AdUrl.Host(url)}");
+            }
             else
+            {
                 Log.Write("ads", $"page script NOT ready after {MaxHold.TotalMilliseconds:0} ms, the page goes on without waiting: {AdUrl.Host(url)}");
+                if (main)
+                    _ = AdsLate(registration, core, st, gen, url);
+            }
         }
         catch (Exception ex)
         {
@@ -250,6 +264,28 @@ public sealed partial class Win
         finally
         {
             d.Complete();
+        }
+    }
+
+    /// <summary>Runs the page's script in the page itself once its registration has finished late.</summary>
+    private static async Task AdsLate(Task registration, CoreWebView2 core, TabAds st, int gen, string url)
+    {
+        try
+        {
+            await registration;
+
+            // Another page has started since: this script belongs to the old one.
+            var js = st.MainJs;
+            if (gen != st.Gen || js is null)
+                return;
+
+            await core.ExecuteScriptAsync(js);
+            if (AdRequestLog.Enabled)
+                Log.Write("ads", $"late page script run in the page: {AdUrl.Host(url)}");
+        }
+        catch (Exception ex)
+        {
+            Log.Write("ads", "could not run the late page script: " + ex.Message);
         }
     }
 
@@ -281,6 +317,8 @@ public sealed partial class Win
 
             var js = PageJs.Build(Adblock.Template, host, _tok, rules.HideSelectors, generic, rules.InjectedScript, rules.ProceduralActions);
             var tBuild = clock.ElapsedMilliseconds;
+            if (main && gen == st.Gen)
+                st.MainJs = js;
 
             // A frame of the same host may have asked meanwhile; the first one wins.
             if (st.Scripts.ContainsKey(host))

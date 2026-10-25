@@ -9,6 +9,18 @@
 //   4. in the top frame, tells the app which classes and ids the page uses and hides what the
 //      generic rules say about them.
 
+// The script can run twice in one document (registered for it, and run again by the app when
+// its registration was late). Only the first run does anything.
+if ((() => {
+  try {
+    if (location.hostname !== __NEAT_HOST__) return false;
+    const key = Symbol.for('neat-ads-ran');
+    if (window[key]) return false;
+    Object.defineProperty(window, key, { value: true });
+    return true;
+  } catch (e) { return true; }
+})()) {
+
 try {
   (function () {
     if (location.hostname !== __NEAT_HOST__) return;
@@ -411,3 +423,5 @@ try {
   else
     start();
 })();
+
+}

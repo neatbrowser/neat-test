@@ -18,6 +18,9 @@ internal sealed class TabAds
     /// <summary>The registration of the page's own script, started when its navigation started.</summary>
     public Task? MainReg;
 
+    /// <summary>The text of the page's own script, once built. Run directly when its registration came too late for the page.</summary>
+    public string? MainJs;
+
     /// <summary>Requests stopped since the tab last started a new page.</summary>
     public int Blocked;
 

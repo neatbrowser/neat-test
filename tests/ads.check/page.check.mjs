@@ -133,6 +133,15 @@ ok('generic: not in a subframe', () => {
   assert.equal(p.listeners.length, 0);
 });
 
+ok('a second run in the same document does nothing', () => {
+  const p = fakePage({ hostname: 'site.test' });
+  const code = build({ host: 'site.test', token: 't', hide: ['.ad'], generic: false, scriptlets: 'globalThis.runs = (globalThis.runs || 0) + 1;' });
+  vm.runInContext(code, p.ctx);
+  vm.runInContext(code, p.ctx);
+  assert.equal(p.ctx.runs, 1, 'the scriptlets ran once');
+  assert.deepEqual(p.rules, ['.ad{display:none!important}'], 'the hiding was made once');
+});
+
 if (process.argv[2]) {
   // Syntax check of a real injected script (from neat_cosmetic_resources) inside the template.
   const real = fs.readFileSync(process.argv[2], 'utf8');
