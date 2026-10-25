@@ -20,7 +20,7 @@ public sealed partial class Win
     /// for it without a limit froze every page (the registration did not finish while the
     /// request was held), so the request is always let go after this.
     /// </summary>
-    private static readonly TimeSpan MaxHold = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan MaxHold = TimeSpan.FromMilliseconds(300);
 
     private readonly ConditionalWeakTable<Tab, TabAds> _ads = new();
 
@@ -266,7 +266,11 @@ public sealed partial class Win
                 return;
 
             var gen = st.Gen;
-            var rules = App.Ads.PageRules(url);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            // The engine's answer can take a while for a site with many rules; the UI thread must not wait for it.
+            var rules = await Task.Run(() => App.Ads.PageRules(url));
+            var tRules = clock.ElapsedMilliseconds;
             if (main)
                 st.Top = rules;
 
@@ -276,6 +280,7 @@ public sealed partial class Win
                 return;
 
             var js = PageJs.Build(Adblock.Template, host, _tok, rules.HideSelectors, generic, rules.InjectedScript, rules.ProceduralActions);
+            var tBuild = clock.ElapsedMilliseconds;
 
             // A frame of the same host may have asked meanwhile; the first one wins.
             if (st.Scripts.ContainsKey(host))
@@ -283,6 +288,7 @@ public sealed partial class Win
 
             st.Scripts[host] = string.Empty;
             var id = await core.AddScriptToExecuteOnDocumentCreatedAsync(js);
+            var tAdd = clock.ElapsedMilliseconds;
 
             // A new page started while the script was being added: it belongs to the old page.
             if (gen != st.Gen)
@@ -290,8 +296,12 @@ public sealed partial class Win
             else
                 st.Scripts[host] = id;
 
-            if (rules.Procedural > 0)
-                Log.Write("ads", $"{host}: {rules.Procedural} procedural rules handed to the page");
+            if (AdRequestLog.Enabled || tAdd >= 100)
+            {
+                Log.Write("ads",
+                    $"{host}: page script took {tAdd} ms (rules {tRules} ms, build {tBuild - tRules} ms, register {tAdd - tBuild} ms); " +
+                    $"{js.Length} bytes, {rules.HideSelectors.Length} hide, {rules.Procedural} procedural, {rules.InjectedScript.Length} bytes of scriptlets");
+            }
         }
         catch (Exception ex)
         {
