@@ -38,6 +38,20 @@ jobs:
         continue-on-error: true
         run: node tests/ads.check/page.check.mjs
 
+      - name: Ad blocker procedural rules check (real Chromium)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'pw'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Push-Location $dir
+          npm init -y | Out-Null
+          npm install playwright@1.49.1 | Out-Null
+          npx playwright install chromium | Out-Null
+          Pop-Location
+          $env:NODE_PATH = Join-Path $dir 'node_modules'
+          node tests/ads.check/procedural.check.mjs
+
       - name: Restore
         run: dotnet restore src/neat/neat.csproj -p:Platform=x64
 
