@@ -19,8 +19,14 @@ internal sealed class Cosmetic
     /// <summary>True when the page asked for no generic hiding.</summary>
     public bool GenericHide { get; init; }
 
-    /// <summary>How many rules need the procedural runtime, which does not exist yet. Only logged.</summary>
-    public int Procedural { get; init; }
+    /// <summary>
+    /// The procedural rules (`:has-text`, `:upward`, `:remove()` ...), each one a JSON text as the
+    /// engine wrote it. ads/page.js runs them.
+    /// </summary>
+    public string[] ProceduralActions { get; init; } = Array.Empty<string>();
+
+    /// <summary>How many procedural rules the page has.</summary>
+    public int Procedural => ProceduralActions.Length;
 
     /// <summary>Reads the JSON of neat_cosmetic_resources. A malformed text gives Empty.</summary>
     public static Cosmetic Parse(string? json)
@@ -41,7 +47,7 @@ internal sealed class Cosmetic
                     ? s.GetString() ?? string.Empty
                     : string.Empty,
                 GenericHide = r.TryGetProperty("generichide", out var g) && g.ValueKind == JsonValueKind.True,
-                Procedural = Strings(r, "procedural_actions").Length,
+                ProceduralActions = Strings(r, "procedural_actions"),
             };
         }
         catch (JsonException)

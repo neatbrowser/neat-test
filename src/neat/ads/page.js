@@ -4,7 +4,9 @@
 //
 //   1. runs the scriptlets (uBO's `##+js(...)` rules) in the page's own world;
 //   2. hides the elements the cosmetic rules name, with a style sheet that page CSP cannot block;
-//   3. in the top frame, tells the app which classes and ids the page uses and hides what the
+//   3. runs the procedural rules (`:has-text`, `:upward`, `:xpath`, `:matches-css`, ... and the
+//      `:remove()` / `:style()` actions) now and again whenever the page changes;
+//   4. in the top frame, tells the app which classes and ids the page uses and hides what the
 //      generic rules say about them.
 
 try {
@@ -21,6 +23,7 @@ try {
   const TOKEN = __NEAT_TOKEN__;
   const HIDE = __NEAT_HIDE__;
   const GENERIC = __NEAT_GENERIC__;
+  const PROC = __NEAT_PROC__;       // the engine's procedural rules, each one a JSON text
   const w = window.chrome && window.chrome.webview;
 
   // ---- hiding ----
@@ -58,7 +61,262 @@ try {
     }
   }
 
+  // ---- procedural rules ----
+  //
+  // Each rule is {selector: [operator...], action?}. The operators narrow a list of elements one
+  // after the other, the way uBO's do; the action (default: hide) is then applied to what is left.
+  // The rules run once the page has a document, and again (a little later, and never in a tight
+  // loop) whenever the page changes.
+
+  const MARK = 'data-neat-hidden';
+  const TEMP = 'data-neat-from';
+  const NOT_THERE = () => false;
+
+  // "text" matches when the text contains it; "/re/flags" is a regular expression.
+  function textMatcher(arg) {
+    const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(arg);
+    if (m) {
+      try {
+        const re = new RegExp(m[1], m[2].replace(/[gy]/g, ''));
+        return s => re.test(s);
+      } catch (e) { return NOT_THERE; }
+    }
+    return s => s.includes(arg);
+  }
+
+  // Like textMatcher, but a plain text must be the whole value.
+  function wholeMatcher(arg) {
+    const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(arg);
+    if (m) return textMatcher(arg);
+    return s => s === arg;
+  }
+
+  function unquote(s) {
+    s = s.trim();
+    if (s.length > 1 && (s[0] === '"' || s[0] === "'") && s[s.length - 1] === s[0])
+      return s.slice(1, -1);
+    return s;
+  }
+
+  // "name", "name=value", with each part possibly quoted or a /regex/.
+  function splitPair(arg) {
+    let quote = '';
+    for (let i = 0; i < arg.length; i++) {
+      const c = arg[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === '"' || c === "'") { quote = c; continue; }
+      if (c === '=') return [unquote(arg.slice(0, i)), unquote(arg.slice(i + 1))];
+    }
+    return [unquote(arg), null];
+  }
+
+  // Splits "a: b; c: d" at the semicolons that are not inside brackets or quotes.
+  function declarations(text) {
+    const out = [];
+    let depth = 0;
+    let quote = '';
+    let from = 0;
+    for (let i = 0; i <= text.length; i++) {
+      const c = text[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === '"' || c === "'") quote = c;
+      else if (c === '(') depth++;
+      else if (c === ')') depth = Math.max(0, depth - 1);
+      else if ((c === ';' && depth === 0) || i === text.length) {
+        const d = text.slice(from, i).trim();
+        from = i + 1;
+        const k = d.indexOf(':');
+        if (k > 0) out.push([d.slice(0, k).trim(), d.slice(k + 1).trim()]);
+      }
+    }
+    return out;
+  }
+
+  function descendants(els, css) {
+    const out = [];
+    const arg = css.trim();
+    for (const el of els) {
+      try {
+        if (arg[0] === '+' || arg[0] === '~') {
+          // Siblings are not inside the element: mark it and look from its parent.
+          const from = el.parentNode;
+          if (!from || !from.querySelectorAll) continue;
+          el.setAttribute(TEMP, '');
+          try {
+            for (const r of from.querySelectorAll('[' + TEMP + ']' + arg)) out.push(r);
+          } finally { el.removeAttribute(TEMP); }
+        } else {
+          // ":scope" is the element itself: ":scope > x" its children, ":scope x" what is inside it.
+          for (const r of el.querySelectorAll(':scope ' + arg)) out.push(r);
+        }
+      } catch (e) { /* a selector this browser refuses matches nothing */ }
+    }
+    return out;
+  }
+
+  function evaluate(f) {
+    let els = null;                 // null: the whole document, not looked at yet
+    const all = () => els === null ? Array.from(document.querySelectorAll('*')) : els;
+
+    for (const op of f.selector) {
+      const a = op.arg;
+      switch (op.type) {
+        case 'css-selector':
+          els = els === null ? Array.from(document.querySelectorAll(a)) : descendants(els, a);
+          break;
+        case 'has-text': {
+          const m = textMatcher(a);
+          els = all().filter(e => m(e.textContent || ''));
+          break;
+        }
+        case 'min-text-length': {
+          const n = Number(a);
+          els = all().filter(e => (e.textContent || '').length >= n);
+          break;
+        }
+        case 'matches-attr': {
+          const [name, value] = splitPair(a);
+          const nm = wholeMatcher(name);
+          const vm = value === null ? null : wholeMatcher(value);
+          els = all().filter(e => {
+            for (const at of e.attributes) {
+              if (nm(at.name) && (vm === null || vm(at.value))) return true;
+            }
+            return false;
+          });
+          break;
+        }
+        case 'matches-css':
+        case 'matches-css-before':
+        case 'matches-css-after': {
+          const [prop, value] = splitPair(a.replace(':', '='));
+          const vm = wholeMatcher(value === null ? '' : value);
+          const pseudo = op.type === 'matches-css-before' ? '::before' : op.type === 'matches-css-after' ? '::after' : null;
+          els = all().filter(e => vm(getComputedStyle(e, pseudo).getPropertyValue(prop)));
+          break;
+        }
+        case 'matches-path': {
+          const m = textMatcher(a);
+          if (!m(location.pathname + location.search)) return [];
+          break;
+        }
+        case 'upward': {
+          const out = [];
+          const n = /^\d+$/.test(a) ? Number(a) : 0;
+          for (const e of all()) {
+            let r = null;
+            if (n > 0 && n < 256) {
+              r = e;
+              for (let i = 0; i < n && r; i++) r = r.parentElement;
+            } else if (n === 0 && e.parentElement) {
+              try { r = e.parentElement.closest(a); } catch (x) { r = null; }
+            }
+            if (r) out.push(r);
+          }
+          els = out;
+          break;
+        }
+        case 'xpath': {
+          const out = [];
+          for (const e of (els === null ? [document] : els)) {
+            try {
+              const snap = document.evaluate(a, e, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+              for (let i = 0; i < snap.snapshotLength; i++) {
+                const nd = snap.snapshotItem(i);
+                if (nd && nd.nodeType === 1) out.push(nd);
+              }
+            } catch (x) { /* a bad expression matches nothing */ }
+          }
+          els = out;
+          break;
+        }
+        default:
+          return [];                // an operator this runtime does not know: do nothing
+      }
+      if (els !== null && els.length === 0) return els;
+    }
+    return els === null ? [] : els;
+  }
+
+  function act(el, action) {
+    if (!action) {
+      if (!el.hasAttribute(MARK)) el.setAttribute(MARK, '');
+      return;
+    }
+    switch (action.type) {
+      case 'remove':
+        el.remove();
+        break;
+      case 'remove-attr':
+        el.removeAttribute(action.arg);
+        break;
+      case 'remove-class':
+        el.classList.remove(action.arg);
+        break;
+      case 'style':
+        for (const [name, value] of declarations(action.arg)) {
+          const important = /\s*!important\s*$/i.test(value);
+          el.style.setProperty(name, value.replace(/\s*!important\s*$/i, ''), important ? 'important' : '');
+        }
+        break;
+    }
+  }
+
+  function procedural(texts) {
+    const rules = [];
+    for (const t of texts) {
+      try {
+        const f = JSON.parse(t);
+        if (f && Array.isArray(f.selector) && f.selector.length) rules.push(f);
+      } catch (e) { /* a rule that is not JSON is skipped */ }
+    }
+    if (!rules.length) return;
+
+    hide(['[' + MARK + ']']);
+
+    let observer = null;
+    let timer = 0;
+    let wait = 100;
+
+    function watch() {
+      if (!observer) return;
+      observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+    }
+
+    function run() {
+      timer = 0;
+      const t0 = Date.now();
+      // The changes made here are not changes of the page.
+      if (observer) observer.disconnect();
+      try {
+        for (const f of rules) {
+          try {
+            for (const el of evaluate(f)) act(el, f.action);
+          } catch (e) { /* one broken rule must not stop the others */ }
+        }
+      } finally {
+        watch();
+      }
+      // A slow page gets more time between runs.
+      wait = Math.max(100, (Date.now() - t0) * 4);
+    }
+
+    function later() {
+      if (!timer) timer = setTimeout(run, wait);
+    }
+
+    observer = new MutationObserver(later);
+    watch();
+    run();
+    if (document.readyState === 'loading')
+      document.addEventListener('DOMContentLoaded', later, { once: true });
+    window.addEventListener('load', later, { once: true });
+  }
+
   hide(HIDE);
+  if (PROC.length) {
+    try { procedural(PROC); } catch (e) { /* the rest of the script goes on */ }
+  }
 
   // ---- generic rules: only the top frame, and only when the page did not ask for none ----
 

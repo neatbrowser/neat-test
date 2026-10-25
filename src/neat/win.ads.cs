@@ -272,10 +272,10 @@ public sealed partial class Win
 
             // Generic rules by class and id are the top frame's business only.
             var generic = main && !rules.GenericHide;
-            if (rules.HideSelectors.Length == 0 && rules.InjectedScript.Length == 0 && !generic)
+            if (rules.HideSelectors.Length == 0 && rules.InjectedScript.Length == 0 && rules.Procedural == 0 && !generic)
                 return;
 
-            var js = PageJs.Build(Adblock.Template, host, _tok, rules.HideSelectors, generic, rules.InjectedScript);
+            var js = PageJs.Build(Adblock.Template, host, _tok, rules.HideSelectors, generic, rules.InjectedScript, rules.ProceduralActions);
 
             // A frame of the same host may have asked meanwhile; the first one wins.
             if (st.Scripts.ContainsKey(host))
@@ -291,7 +291,7 @@ public sealed partial class Win
                 st.Scripts[host] = id;
 
             if (rules.Procedural > 0)
-                Log.Write("ads", $"{host}: {rules.Procedural} procedural rules skipped (not supported yet)");
+                Log.Write("ads", $"{host}: {rules.Procedural} procedural rules handed to the page");
         }
         catch (Exception ex)
         {

@@ -10,12 +10,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const template = fs.readFileSync(path.join(here, '..', '..', 'src', 'neat', 'ads', 'page.js'), 'utf8');
 
 // Same filling-in as PageJs.Build in C#.
-function build({ host, token, hide, generic, scriptlets }) {
+function build({ host, token, hide, generic, scriptlets, proc = [] }) {
   return template
     .replaceAll('__NEAT_HOST__', JSON.stringify(host))
     .replaceAll('__NEAT_TOKEN__', JSON.stringify(token))
     .replaceAll('__NEAT_HIDE__', JSON.stringify(hide))
     .replaceAll('__NEAT_GENERIC__', generic ? 'true' : 'false')
+    .replaceAll('__NEAT_PROC__', JSON.stringify(proc))
     .replaceAll('/*__NEAT_SCRIPTLETS__*/', () => scriptlets);
 }
 

@@ -102,6 +102,7 @@ internal static class Program
         Is("var a=1;", c.InjectedScript, "script");
         Is(true, c.GenericHide, "generichide");
         Is(2, c.Procedural, "procedural count");
+        Is("{}", c.ProceduralActions[0], "procedural text");
 
         Is(0, Cosmetic.Parse("not json").HideSelectors.Length, "junk");
         Is(0, Cosmetic.Parse(null).HideSelectors.Length, "null");
@@ -113,6 +114,10 @@ internal static class Program
         var t = "A __NEAT_HOST__ B __NEAT_TOKEN__ C __NEAT_HIDE__ D __NEAT_GENERIC__ E /*__NEAT_SCRIPTLETS__*/ F";
         var s = PageJs.Build(t, "a.test", "tok", new[] { ".a", "b\"c" }, true, "x(\"__NEAT_HOST__\");");
         Is("A \"a.test\" B \"tok\" C [\".a\",\"b\\u0022c\"] D true E x(\"__NEAT_HOST__\"); F", s, "filled text");
+
+        var p = PageJs.Build("P __NEAT_PROC__ Q", "a.test", "tok", Array.Empty<string>(), false, "", new[] { "{\"selector\":[]}" });
+        Is("P [\"{\\u0022selector\\u0022:[]}\"] Q", p, "procedural rules filled in");
+        Is("P [] Q", PageJs.Build("P __NEAT_PROC__ Q", "a.test", "tok", Array.Empty<string>(), false, ""), "no procedural rules");
     }
 
     private static void FilterFolder()
