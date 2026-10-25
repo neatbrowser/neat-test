@@ -20,6 +20,11 @@ public sealed partial class Win
     // The rounded shape the page is cut to. Made when the frame is first laid out.
     private CompositionRoundedRectangleGeometry? _cut;
 
+    // How many times the cut failed. Windows refuses the visual now and then (while the window is
+    // being resized, for one), and every resize step asks again, so only the first failure is
+    // written to the log; the rest would only fill it.
+    private int _cutFailures;
+
     private void RoundInit()
     {
         // The shape follows the frame as the window or the sidebar changes its size.
@@ -42,10 +47,18 @@ public sealed partial class Win
             var r = (float)frame.CornerRadius.TopLeft;
             _cut.Size = frame.ActualSize;
             _cut.CornerRadius = new Vector2(r, r);
+
+            if (_cutFailures > 0)
+            {
+                Log.Write("look", $"page clip works again after {_cutFailures} refusals");
+                _cutFailures = 0;
+            }
         }
         catch (Exception ex)
         {
-            Log.Error("look", ex, "page clip failed");
+            // The next size change tries again, so a refusal is not the end of the rounded corners.
+            if (_cutFailures++ == 0)
+                Log.Error("look", ex, "page clip refused (only the first refusal is logged; the next size change tries again)");
         }
     }
 }
