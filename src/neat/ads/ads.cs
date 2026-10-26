@@ -128,6 +128,40 @@ internal sealed class Adblock
         }
     }
 
+    private volatile bool _noDocument;
+
+    /// <summary>
+    /// True when opening this address as a page should be stopped. Only rules written for pages
+    /// count (uBlock Origin's behaviour); an ad host's ordinary rule does not stop a visit.
+    /// A dll or release without page rules answers false.
+    /// </summary>
+    public bool BlockDocument(string url)
+    {
+        var e = _engine;
+        if (e is null || _noDocument)
+            return false;
+
+        try
+        {
+            if (!e.BlockDocument(url))
+                return false;
+
+            Interlocked.Increment(ref _blocked);
+            return true;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            _noDocument = true;
+            Log.Write("ads", "neat_adblock.dll is too old for page rules; pages are not stopped");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Fail(ex);
+            return false;
+        }
+    }
+
     /// <summary>What the cosmetic and scriptlet rules say about a page.</summary>
     public Cosmetic PageRules(string url)
     {

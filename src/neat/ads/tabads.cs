@@ -24,6 +24,12 @@ internal sealed class TabAds
     /// <summary>Requests stopped since the tab last started a new page.</summary>
     public int Blocked;
 
+    /// <summary>Hosts the person chose to open anyway after a warning, for as long as the tab lives.</summary>
+    public readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The address the warning page is showing for, so only that one can be proceeded to.</summary>
+    public string? BlockedUrl;
+
     /// <summary>The cosmetic rules of the top frame. Its exceptions are handed back when generic rules are asked for.</summary>
     public Cosmetic Top = Cosmetic.Empty;
 

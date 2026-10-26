@@ -83,6 +83,7 @@ src/neat/
   ads/cosmetic.cs   what the engine says to hide or run on a page (read from its JSON)
   ads/pagejs.cs     fills in ads/page.js for one host
   ads/page.js       the script every page gets: scriptlets, hiding by style sheet, generic rules by class and id
+  ads/blockpage.cs  the warning shown instead of a page that a page rule ($document / $all) stops; "Continue anyway" opens it
   ads/requestlog.cs  optional one-line-per-request log (ads-requests.tsv), for finding out why a host got through
   ads/adurl.cs, dataurl.cs, reqtype.cs, tabads.cs   small helpers: addresses, data: URLs, request types, per-tab state
   win.ads.cs        the window's side of the blocker: WebResourceRequested, popups, page scripts
@@ -100,9 +101,11 @@ Without them the app still runs, with no blocker (the log says so: `ads` lines i
 
 What it does today: stops network requests, replaces some with harmless stand-ins (blank script,
 pixel), stops popups, hides elements (cosmetic rules, including generic ones by class and id) and
-runs uBO scriptlets before the page's own scripts. What it does not do yet: `:has-text` and other
-procedural rules, stopping the page itself, `$removeparam`, `$csp`, requests from workers, live
-list updates (the lists are the ones from build time).
+runs uBO scriptlets before the page's own scripts, handles procedural cosmetic rules (`:has-text`
+and the like), watches requests from workers, and stops a page itself when a page rule (`$document`,
+`$all`) says so, with a warning that has "Go back" and "Continue anyway" (as uBO, an ordinary
+`||host^` rule does not stop a visit). What it does not do yet: `$removeparam`, `$csp`, HTML
+filtering, live list updates (the lists are the ones from build time).
 
 Settings (`settings.json`, browser closed): `"Ads": { "On": true, "Off": ["example.com"] }`.
 `On: false` switches the blocker off; `Off` lists hosts where it does nothing.

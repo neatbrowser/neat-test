@@ -105,6 +105,25 @@ internal sealed class AdsEngine : IDisposable
         }
     }
 
+    /// <summary>
+    /// True when the page itself, opened at <paramref name="url"/>, should be stopped (a rule with
+    /// $document, $doc or $all). Throws EntryPointNotFoundException with a dll that predates it.
+    /// </summary>
+    public bool BlockDocument(string url)
+    {
+        var added = false;
+        try
+        {
+            _h.DangerousAddRef(ref added);
+            return Native.neat_check_document(_h.DangerousGetHandle(), url) == 1;
+        }
+        finally
+        {
+            if (added)
+                _h.DangerousRelease();
+        }
+    }
+
     /// <summary>The cosmetic resources for a page, as the JSON the dll returns, or null.</summary>
     public string? CosmeticJson(string url)
     {

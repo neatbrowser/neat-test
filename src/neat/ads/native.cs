@@ -53,6 +53,12 @@ internal static class Native
         [MarshalAs(UnmanagedType.LPUTF8Str)] string targetUrl,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string openerUrl);
 
+    /// <summary>1 when a top-level navigation to the address is blocked ($document / $all rules). Newer dlls only.</summary>
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int neat_check_document(
+        IntPtr engine,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string url);
+
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     public static extern int neat_cosmetic_resources(
         IntPtr engine,

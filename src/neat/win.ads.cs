@@ -36,7 +36,18 @@ public sealed partial class Win
 
         try
         {
-            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            // Dedicated workers, shared workers and service workers make requests of their own
+            // (many trackers and ad loaders run there). The plain filter only sees the page's.
+            try
+            {
+                core.AddWebResourceRequestedFilterWithRequestSourceKinds(
+                    "*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("ads", "requests of workers cannot be watched here: " + ex.Message);
+                core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            }
         }
         catch (Exception ex)
         {
@@ -57,6 +68,7 @@ public sealed partial class Win
         st.Page = e.Uri;
         st.Blocked = 0;
         st.Top = Cosmetic.Empty;
+        st.BlockedUrl = null;
 
         st.Gen++;
 
@@ -80,7 +92,9 @@ public sealed partial class Win
         st.MainJs = null;
 
         // The page's script is prepared now, before its request exists, and not waited for here.
-        if (AdUrl.IsWeb(e.Uri) && App.Ads.Ready && !App.Ads.IsOff(AdUrl.Host(e.Uri)))
+        // (Not for a page that is about to be replaced by the warning.)
+        if (AdUrl.IsWeb(e.Uri) && App.Ads.Ready && !App.Ads.IsOff(AdUrl.Host(e.Uri))
+            && !(AdsStopsPage(st, e.Uri)))
             st.MainReg = AdsPage(core, st, e.Uri, main: true);
     }
 
@@ -91,24 +105,39 @@ public sealed partial class Win
         var url = e.Request.Uri;
         var context = e.ResourceContext;
         var kind = context.ToString();
+
+        // A request a worker makes is judged like the page's, and told apart in the log.
+        var worker = false;
+        try
+        {
+            worker = e.RequestedSourceKind != CoreWebView2WebResourceRequestSourceKinds.Document;
+        }
+        catch (Exception)
+        {
+            // An older runtime does not say; it only sends the page's requests anyway.
+        }
+
+        // What the log shows; the type used for judging stays the plain one.
+        var shownKind = worker ? kind + "@worker" : kind;
+
         var method = e.Request.Method;
         var logging = AdRequestLog.Enabled;
 
         if (!ads.Ready)
         {
             if (logging)
-                AdRequestLog.Add("skip:engine-not-ready", kind, method, st.Page, url);
+                AdRequestLog.Add("skip:engine-not-ready", shownKind, method, st.Page, url);
             return;
         }
 
         if (!AdUrl.IsWeb(url))
         {
             if (logging)
-                AdRequestLog.Add("skip:not-web", kind, method, st.Page, url);
+                AdRequestLog.Add("skip:not-web", shownKind, method, st.Page, url);
             return;
         }
 
-        var doc = context == CoreWebView2WebResourceContext.Document;
+        var doc = context == CoreWebView2WebResourceContext.Document && !worker;
 
         // The page's own document is the first one requested after NavigationStarting. The hosts
         // are compared, not the whole address: the two events may write the same address a little
@@ -122,16 +151,30 @@ public sealed partial class Win
         if (ads.IsOff(AdUrl.Host(page)))
         {
             if (logging)
-                AdRequestLog.Add("skip:blocker-off-for-page", kind, method, page, url);
+                AdRequestLog.Add("skip:blocker-off-for-page", shownKind, method, page, url);
             return;
         }
 
         if (main)
         {
-            // The page itself is never stopped (there is no way back from a blank page yet);
-            // it only gets its hiding rules, whose script was started at NavigationStarting.
+            // The page itself is stopped only by a page rule ($document / $all), and only until the
+            // person chooses to go on; the warning has a way back.
+            if (AdsStopsPage(st, url))
+            {
+                if (logging)
+                    AdRequestLog.Add("block:page", shownKind, method, page, url);
+
+                Log.Write("ads", "page stopped: " + url);
+                st.Blocked++;
+                st.BlockedUrl = url;
+                var bd = e.GetDeferral();
+                _ = AdsBlockPage(core, e, url, bd);
+                return;
+            }
+
+            // Otherwise it only gets its hiding rules, whose script was started at NavigationStarting.
             if (logging)
-                AdRequestLog.Add("skip:main-page", kind, method, page, url);
+                AdRequestLog.Add("skip:main-page", shownKind, method, page, url);
 
             var reg = st.MainReg ?? AdsPage(core, st, url, main: true);
             var d = e.GetDeferral();
@@ -143,7 +186,7 @@ public sealed partial class Win
         if (doc && AdUrl.Host(url) == AdUrl.Host(page))
         {
             if (logging)
-                AdRequestLog.Add("skip:frame-same-host", kind, method, page, url);
+                AdRequestLog.Add("skip:frame-same-host", shownKind, method, page, url);
 
             var reg = AdsPage(core, st, url, main: false);
             var d = e.GetDeferral();
@@ -157,10 +200,10 @@ public sealed partial class Win
             || (verdict.Action == AdAction.Redirect && !DataUrl.TryParse(verdict.Redirect, out _, out _)))
         {
             if (logging)
-                AdRequestLog.Add(verdict.Action == AdAction.Block ? "block" : "block:redirect-unusable", kind, method, page, url);
+                AdRequestLog.Add(verdict.Action == AdAction.Block ? "block" : "block:redirect-unusable", shownKind, method, page, url);
 
             st.Blocked++;
-            e.Response = doc
+            e.Response = doc && !worker
                 ? core.Environment.CreateWebResourceResponse(null!, 200, "OK", "Content-Type: text/html")
                 : Refused(core);
             return;
@@ -169,7 +212,7 @@ public sealed partial class Win
         if (verdict.Action == AdAction.Redirect)
         {
             if (logging)
-                AdRequestLog.Add("redirect", kind, method, page, url);
+                AdRequestLog.Add("redirect", shownKind, method, page, url);
 
             st.Blocked++;
             var d = e.GetDeferral();
@@ -178,7 +221,7 @@ public sealed partial class Win
         }
 
         if (logging)
-            AdRequestLog.Add("allow", kind, method, page, url);
+            AdRequestLog.Add("allow", shownKind, method, page, url);
 
         if (doc)
         {
@@ -199,6 +242,41 @@ public sealed partial class Win
     private static CoreWebView2WebResourceResponse Refused(CoreWebView2 core) =>
         core.Environment.CreateWebResourceResponse(
             null!, 302, "Found", "Location: data:,\r\nCache-Control: no-store");
+
+    /// <summary>True when a page rule stops this address and the person has not chosen to go on.</summary>
+    private static bool AdsStopsPage(TabAds st, string url)
+    {
+        var host = AdUrl.Host(url);
+        return host is not null && !st.Allowed.Contains(host) && App.Ads.BlockDocument(url);
+    }
+
+    /// <summary>Answers the page's own request with the warning page.</summary>
+    private async Task AdsBlockPage(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string url, Windows.Foundation.Deferral d)
+    {
+        try
+        {
+            var html = BlockPage.Build(url, AdUrl.Host(url) ?? url, _tok);
+            var stream = new InMemoryRandomAccessStream();
+            var writer = new DataWriter(stream);
+            writer.WriteBytes(System.Text.Encoding.UTF8.GetBytes(html));
+            await writer.StoreAsync();
+            writer.DetachStream();
+            stream.Seek(0);
+
+            e.Response = core.Environment.CreateWebResourceResponse(
+                stream, 200, "OK",
+                "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\n" +
+                "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ads", ex, "could not show the warning page");
+        }
+        finally
+        {
+            d.Complete();
+        }
+    }
 
     /// <summary>Answers a request with the engine's stand-in resource (a blank script, a pixel, ...).</summary>
     private async Task AdsRedirect(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string dataUrl, Windows.Foundation.Deferral d)
@@ -370,6 +448,24 @@ public sealed partial class Win
         try
         {
             using var doc = JsonDocument.Parse(msg[head.Length..]);
+
+            // "Continue anyway" on the warning page. Only the address the warning is for is accepted.
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("proceed", out var go)
+                && go.ValueKind == JsonValueKind.String)
+            {
+                var target = go.GetString();
+                if (target is not null && target == st.BlockedUrl && AdUrl.Host(target) is { } h)
+                {
+                    st.Allowed.Add(h);
+                    st.BlockedUrl = null;
+                    Log.Write("ads", "continuing to a stopped page: " + target);
+                    core.Navigate(target);
+                }
+
+                return;
+            }
+
             var classes = Names(doc.RootElement, "c");
             var ids = Names(doc.RootElement, "i");
             if (classes.Count == 0 && ids.Count == 0)
