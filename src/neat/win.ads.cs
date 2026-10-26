@@ -40,8 +40,17 @@ public sealed partial class Win
             // (many trackers and ad loaders run there). The plain filter only sees the page's.
             try
             {
-                core.AddWebResourceRequestedFilterWithRequestSourceKinds(
-                    "*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
+                // The three-argument form is projected under different names by different SDK
+                // versions (an overload of AddWebResourceRequestedFilter, or a method of its own),
+                // so it is looked up by shape instead of by name.
+                var add = typeof(CoreWebView2).GetMethods()
+                    .FirstOrDefault(m => m.Name.StartsWith("AddWebResourceRequestedFilter", StringComparison.Ordinal)
+                        && m.GetParameters().Length == 3)
+                    ?? throw new MissingMethodException("no filter method with source kinds");
+                add.Invoke(core, new object[]
+                {
+                    "*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All,
+                });
             }
             catch (Exception ex)
             {
