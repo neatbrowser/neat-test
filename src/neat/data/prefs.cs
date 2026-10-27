@@ -119,6 +119,6 @@ public sealed class AdPrefs
     /// <summary>Hours between two looks for newer lists (1 to 168). The lists themselves are rebuilt every 6 hours.</summary>
     public int UpdateHours { get; set; } = 6;
 
-    /// <summary>Where the newest release is described: the GitHub API address of the neat-filters "latest" release.</summary>
-    public string UpdateUrl { get; set; } = "https://api.github.com/repos/neatbrowser/neat-filters/releases/latest";
+    /// <summary>The GitHub repository whose latest release holds the lists (its web address; the API is not used).</summary>
+    public string UpdateRepo { get; set; } = "https://github.com/neatbrowser/neat-filters";
 }

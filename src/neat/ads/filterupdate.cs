@@ -151,15 +151,19 @@ internal sealed class FilterUpdater
     private const long MaxTotal = 300_000_000;
 
     private readonly HttpClient _http;
-    private readonly string _releaseUrl;
+    private readonly string _repo;
     private readonly FilterStore _store;
     private readonly Action<string> _log;
 
-    /// <param name="releaseUrl">The GitHub API address of the release (".../releases/latest"): JSON with "assets" [{name, browser_download_url}].</param>
-    public FilterUpdater(HttpClient http, string releaseUrl, FilterStore store, Action<string> log)
+    /// <param name="repoUrl">
+    /// The repository's address on GitHub ("https://github.com/owner/repo"). Only its ordinary web
+    /// addresses are used (".../releases/latest" and ".../releases/download/tag/file"), never the API,
+    /// whose limit of 60 requests an hour for each address is quickly used up on a shared network.
+    /// </param>
+    public FilterUpdater(HttpClient http, string repoUrl, FilterStore store, Action<string> log)
     {
         _http = http;
-        _releaseUrl = releaseUrl;
+        _repo = repoUrl.TrimEnd('/');
         _store = store;
         _log = log;
     }
@@ -171,11 +175,11 @@ internal sealed class FilterUpdater
     /// </summary>
     public async Task<string?> CheckAsync(string currentVersion, CancellationToken ct)
     {
-        var assets = await ListAssets(ct);
-        if (!assets.TryGetValue("manifest.json", out var manifestUrl))
-            throw new InvalidDataException("the release has no manifest.json");
+        // The release is pinned by its tag, so a release published while this runs cannot mix two of them.
+        var tag = await LatestTag(ct);
+        var baseUrl = $"{_repo}/releases/download/{Uri.EscapeDataString(tag)}/";
 
-        var manifestBytes = await Download(manifestUrl, MaxManifest, ct);
+        var manifestBytes = await Download(baseUrl + "manifest.json", MaxManifest, ct);
         string version;
         List<(string Name, string Sha)> files;
         using (var doc = JsonDocument.Parse(manifestBytes))
@@ -244,10 +248,7 @@ internal sealed class FilterUpdater
                     continue;
                 }
 
-                if (!assets.TryGetValue(name, out var url))
-                    throw new InvalidDataException(name + " is in the manifest but not in the release");
-
-                total += await DownloadTo(url, dest, sha, MaxFile, ct);
+                total += await DownloadTo(baseUrl + Uri.EscapeDataString(name), dest, sha, MaxFile, ct);
                 downloaded++;
                 if (total > MaxTotal)
                     throw new InvalidDataException("the release is larger than expected");
@@ -276,34 +277,33 @@ internal sealed class FilterUpdater
         }
     }
 
-    /// <summary>Asset name to download address, from the release's JSON.</summary>
-    private async Task<Dictionary<string, string>> ListAssets(CancellationToken ct)
+    /// <summary>
+    /// The tag of the latest release: ".../releases/latest" answers with a redirect to
+    /// ".../releases/tag/TAG", which the client has followed by the time the answer arrives.
+    /// </summary>
+    private async Task<string> LatestTag(CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, _releaseUrl);
-        req.Headers.Accept.ParseAdd("application/vnd.github+json");
+        using var req = new HttpRequestMessage(HttpMethod.Get, _repo + "/releases/latest");
         using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+
         if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
-            throw new InvalidDataException("the release was not found (is the repository public?): " + _releaseUrl);
+            throw new InvalidDataException("no release was found (is the repository public?): " + _repo);
+
+        if (res.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests)
+            throw new InvalidDataException("GitHub is limiting requests for now, trying again later");
 
         res.EnsureSuccessStatusCode();
-        var bytes = await ReadLimited(res, MaxManifest, ct);
-        using var doc = JsonDocument.Parse(bytes);
 
-        var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (doc.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var a in assets.EnumerateArray())
-            {
-                var name = a.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
-                var url = a.TryGetProperty("browser_download_url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
+        var path = res.RequestMessage?.RequestUri?.AbsolutePath ?? string.Empty;
+        var i = path.LastIndexOf("/tag/", StringComparison.Ordinal);
+        if (i < 0)
+            throw new InvalidDataException("the latest release has no tag");
 
-                // Only HTTPS: an asset address is never followed to anything else.
-                if (name is not null && url is not null && url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    map[name] = url;
-            }
-        }
+        var tag = Uri.UnescapeDataString(path[(i + 5)..]);
+        if (!FilterStore.IsSafeVersion(tag))
+            throw new InvalidDataException("the latest release has an unusable tag");
 
-        return map;
+        return tag;
     }
 
     private async Task<byte[]> Download(string url, long max, CancellationToken ct)

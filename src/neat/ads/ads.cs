@@ -192,7 +192,7 @@ internal sealed class Adblock
         }
 
         var every = TimeSpan.FromHours(Math.Clamp(prefs.UpdateHours, 1, 168));
-        var updater = new FilterUpdater(Http, prefs.UpdateUrl, Store, m => Log.Write("ads", m));
+        var updater = new FilterUpdater(Http, prefs.UpdateRepo, Store, m => Log.Write("ads", m));
 
         // The first pages come first.
         await Task.Delay(TimeSpan.FromSeconds(30));
@@ -222,7 +222,7 @@ internal sealed class Adblock
             }
             catch (Exception ex)
             {
-                UpdateStatus = "could not check: " + ex.Message;
+                UpdateStatus = "could not check for new lists: " + (ex.Message.Length > 90 ? ex.Message[..90] + "…" : ex.Message);
                 Log.Write("ads", "list update failed: " + ex.Message);
                 wait = every < TimeSpan.FromMinutes(30) ? every : TimeSpan.FromMinutes(30);
             }

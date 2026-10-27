@@ -110,7 +110,7 @@ and the like), watches requests from workers, and stops a page itself when a pag
 filtering.
 
 Lists update themselves: 30 seconds after start and then every 6 hours the blocker reads the
-description of the latest `neat-filters` release (GitHub API), and when its version is newer than
+latest `neat-filters` release (its ordinary web addresses on github.com, not the API, which allows only 60 requests an hour for each address), and when its version is newer than
 the one in use it downloads the files that changed (the others are copied from what is here),
 checks every file against the manifest, and only then switches to the new release without a
 restart. Releases are kept in `%LOCALAPPDATA%\NEAT\filters-dl\<version>` (the newest two); the
@@ -125,7 +125,7 @@ blocker on this site (it adds the site to `Off` and reloads the page) and the fi
 A site in `Off` also covers its subdomains: `example.com` switches the blocker off on `www.example.com`.
 
 Settings (`settings.json`, browser closed):
-`"Ads": { "On": true, "Off": ["example.com"], "Update": true, "UpdateHours": 6 }`.
+`"Ads": { "On": true, "Off": ["example.com"], "Update": true, "UpdateHours": 6, "UpdateRepo": "https://github.com/neatbrowser/neat-filters" }`.
 `On: false` switches the blocker off; `Off` lists hosts where it does nothing; `Update: false` keeps
 the lists that are there; `UpdateHours` is how often to look (1 to 168).
 

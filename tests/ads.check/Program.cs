@@ -160,13 +160,37 @@ internal static class Program
 
     private sealed class Fake : HttpMessageHandler
     {
+        public const string Repo = "https://gh.test/o/r";
+
         public readonly Dictionary<string, byte[]> Pages = new();
         public readonly List<string> Asked = new();
+
+        /// <summary>The tag ".../releases/latest" leads to; null means the repository has no release.</summary>
+        public string? Tag;
+
+        /// <summary>When set, every request is answered with this status (a rate limit, say).</summary>
+        public HttpStatusCode? Always;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
         {
             var url = r.RequestUri!.ToString();
             Asked.Add(url);
+
+            if (Always is { } code)
+                return Task.FromResult(new HttpResponseMessage(code));
+
+            // What the client sees after following GitHub's redirect from /releases/latest to /releases/tag/TAG.
+            if (url == Repo + "/releases/latest")
+            {
+                return Task.FromResult(Tag is null
+                    ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                    : new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        RequestMessage = new HttpRequestMessage(HttpMethod.Get, Repo + "/releases/tag/" + Tag),
+                        Content = new StringContent("<html></html>"),
+                    });
+            }
+
             return Task.FromResult(Pages.TryGetValue(url, out var b)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(b) }
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -192,15 +216,14 @@ internal static class Program
         File.WriteAllBytes(Path.Combine(dir, "manifest.json"), ManifestJson(version, files));
     }
 
-    /// <summary>Makes the fake server describe a release (the API answer, the manifest, the files).</summary>
-    private static void Serve(Fake f, string version, params (string Name, string Text)[] files)
+    /// <summary>Makes the fake server publish a release under a tag (the manifest and the files).</summary>
+    private static void Serve(Fake f, string tag, string version, params (string Name, string Text)[] files)
     {
-        var assets = files.Select(x => x.Name).Append("manifest.json")
-            .Select(n => new { name = n, browser_download_url = "https://dl.test/" + n }).ToArray();
-        f.Pages["https://api.test/release"] = JsonSerializer.SerializeToUtf8Bytes(new { assets });
-        f.Pages["https://dl.test/manifest.json"] = ManifestJson(version, files);
+        f.Tag = tag;
+        var dl = Fake.Repo + "/releases/download/" + tag + "/";
+        f.Pages[dl + "manifest.json"] = ManifestJson(version, files);
         foreach (var (n, t) in files)
-            f.Pages["https://dl.test/" + n] = Encoding.UTF8.GetBytes(t);
+            f.Pages[dl + n] = Encoding.UTF8.GetBytes(t);
     }
 
     private static string TempDir()
@@ -223,14 +246,14 @@ internal static class Program
 
             var fake = new Fake();
             using var http = new HttpClient(fake);
-            var up = new FilterUpdater(http, "https://api.test/release", store, _ => { });
+            var up = new FilterUpdater(http, Fake.Repo, store, _ => { });
 
-            Serve(fake, "2026.1.2.0000", ("a.txt", "||a.test^\n"), ("c.txt", "||c.test^\n"));
+            Serve(fake, "v2", "2026.1.2.0000", ("a.txt", "||a.test^\n"), ("c.txt", "||c.test^\n"));
             var got = up.CheckAsync("2026.1.1.0000", default).GetAwaiter().GetResult();
             Is<string?>(Path.Combine(root, "2026.1.2.0000"), got, "the new release's folder");
             Is("||c.test^\n", File.ReadAllText(Path.Combine(got!, "c.txt")), "downloaded file");
             Is("||a.test^\n", File.ReadAllText(Path.Combine(got!, "a.txt")), "reused file");
-            Is(false, fake.Asked.Contains("https://dl.test/a.txt"), "a list that did not change is not downloaded again");
+            Is(false, fake.Asked.Any(u => u.EndsWith("/a.txt")), "a list that did not change is not downloaded again");
             Is("2026.1.2.0000", store.Best()!.Value.Version, "the downloaded release is the best one now");
             Is(0, Directory.GetDirectories(root).Count(d => Path.GetFileName(d).StartsWith('.')), "no unfinished folder is left");
 
@@ -238,19 +261,26 @@ internal static class Program
             Is<string?>(null, up.CheckAsync("2026.2.0.0000", default).GetAwaiter().GetResult(), "an older release is never taken");
 
             // A file that arrives altered is refused, and nothing of the release stays behind.
-            Serve(fake, "2026.1.3.0000", ("c.txt", "||c3.test^\n"));
-            fake.Pages["https://dl.test/c.txt"] = Encoding.UTF8.GetBytes("||evil.test^\n");
+            Serve(fake, "v3", "2026.1.3.0000", ("c.txt", "||c3.test^\n"));
+            fake.Pages[Fake.Repo + "/releases/download/v3/c.txt"] = Encoding.UTF8.GetBytes("||evil.test^\n");
             Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "altered download");
             Is(false, Directory.Exists(Path.Combine(root, "2026.1.3.0000")), "the refused release is not visible");
             Is(0, Directory.GetDirectories(root).Count(d => Path.GetFileName(d).StartsWith('.')), "a refused download leaves no unfinished folder");
 
             // A version that tries to leave the folder is refused.
-            Serve(fake, "../evil", ("c.txt", "||c.test^\n"));
+            Serve(fake, "v4", "../evil", ("c.txt", "||c.test^\n"));
             Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "unsafe version");
 
-            // A release the server does not have.
-            fake.Pages.Remove("https://api.test/release");
+            // A tag that would leave the download address is refused.
+            Serve(fake, "v5;x", "2026.1.5.0000", ("c.txt", "||c.test^\n"));
+            Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "unsafe tag");
+
+            // A repository with no release, and GitHub limiting requests: both end as a clear failure.
+            fake.Tag = null;
             Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "release not found");
+            fake.Always = HttpStatusCode.Forbidden;
+            Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "rate limit");
+            fake.Always = null;
 
             // A damaged download is skipped: the bundled release is used again.
             File.WriteAllText(Path.Combine(root, "2026.1.2.0000", "c.txt"), "damaged");
