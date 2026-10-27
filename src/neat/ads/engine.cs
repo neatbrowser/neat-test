@@ -44,14 +44,78 @@ internal sealed class AdsEngine : IDisposable
     /// </summary>
     public static AdsEngine Create(string dir)
     {
-        var abi = Native.neat_abi_version();
-        if (abi != Native.AbiVersion)
-            throw new InvalidOperationException($"neat_adblock.dll has ABI {abi}, this build needs {Native.AbiVersion}");
-
+        CheckAbi();
         var p = Native.neat_engine_create(dir, out var err);
         if (p == IntPtr.Zero)
             throw new InvalidOperationException(Take(err) ?? "neat_adblock could not build the engine");
 
+        return Wrap(p);
+    }
+
+    /// <summary>
+    /// Like <see cref="Create"/>, but takes the engine the dll saved earlier (see <see cref="SaveCache"/>)
+    /// when it was saved for the same <paramref name="key"/>, which is much quicker than reading the
+    /// lists. A missing, damaged or foreign cache is not an error: the lists are read instead.
+    /// With a dll that predates the cache this is just <see cref="Create"/>.
+    /// </summary>
+    public static AdsEngine Load(string dir, string cachePath, string key, out bool fromCache)
+    {
+        fromCache = false;
+        CheckAbi();
+
+        IntPtr p;
+        int used;
+        IntPtr err;
+        try
+        {
+            p = Native.neat_engine_load(dir, cachePath, key, out used, out err);
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return Create(dir);
+        }
+
+        if (p == IntPtr.Zero)
+            throw new InvalidOperationException(Take(err) ?? "neat_adblock could not build the engine");
+
+        fromCache = used == 1;
+        return Wrap(p);
+    }
+
+    /// <summary>
+    /// Saves the engine so the next start can skip reading the lists. Returns false when the dll
+    /// cannot (too old, disk error); nothing else depends on it.
+    /// </summary>
+    public bool SaveCache(string path, string key)
+    {
+        var added = false;
+        try
+        {
+            _h.DangerousAddRef(ref added);
+            var rc = Native.neat_engine_save(_h.DangerousGetHandle(), path, key, out var err);
+            Take(err); // gives the message back to the dll
+            return rc == 0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (added)
+                _h.DangerousRelease();
+        }
+    }
+
+    private static void CheckAbi()
+    {
+        var abi = Native.neat_abi_version();
+        if (abi != Native.AbiVersion)
+            throw new InvalidOperationException($"neat_adblock.dll has ABI {abi}, this build needs {Native.AbiVersion}");
+    }
+
+    private static AdsEngine Wrap(IntPtr p)
+    {
         var h = new Handle();
         h.Set(p);
         return new AdsEngine(h);

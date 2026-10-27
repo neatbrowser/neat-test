@@ -21,6 +21,7 @@
     <Compile Include="..\..\src\neat\ads\cosmetic.cs" LinkBase="ads" />
     <Compile Include="..\..\src\neat\ads\pagejs.cs" LinkBase="ads" />
     <Compile Include="..\..\src\neat\ads\filterdir.cs" LinkBase="ads" />
+    <Compile Include="..\..\src\neat\ads\filterupdate.cs" LinkBase="ads" />
   </ItemGroup>
 
 </Project>

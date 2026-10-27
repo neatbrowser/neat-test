@@ -84,6 +84,7 @@ src/neat/
   ads/pagejs.cs     fills in ads/page.js for one host
   ads/page.js       the script every page gets: scriptlets, hiding by style sheet, generic rules by class and id
   ads/blockpage.cs  the warning shown instead of a page that a page rule ($document / $all) stops; "Continue anyway" opens it
+  ads/filterupdate.cs  where releases live (FilterStore) and the list updater (FilterUpdater): download, check, switch
   ads/requestlog.cs  optional one-line-per-request log (ads-requests.tsv), for finding out why a host got through
   ads/adurl.cs, dataurl.cs, reqtype.cs, tabads.cs   small helpers: addresses, data: URLs, request types, per-tab state
   win.ads.cs        the window's side of the blocker: WebResourceRequested, popups, page scripts
@@ -105,10 +106,21 @@ runs uBO scriptlets before the page's own scripts, handles procedural cosmetic r
 and the like), watches requests from workers, and stops a page itself when a page rule (`$document`,
 `$all`) says so, with a warning that has "Go back" and "Continue anyway" (as uBO, an ordinary
 `||host^` rule does not stop a visit). What it does not do yet: `$removeparam`, `$csp`, HTML
-filtering, live list updates (the lists are the ones from build time).
+filtering.
 
-Settings (`settings.json`, browser closed): `"Ads": { "On": true, "Off": ["example.com"] }`.
-`On: false` switches the blocker off; `Off` lists hosts where it does nothing.
+Lists update themselves: 30 seconds after start and then every 6 hours the blocker reads the
+description of the latest `neat-filters` release (GitHub API), and when its version is newer than
+the one in use it downloads the files that changed (the others are copied from what is here),
+checks every file against the manifest, and only then switches to the new release without a
+restart. Releases are kept in `%LOCALAPPDATA%\NEAT\filters-dl\<version>` (the newest two); the
+release next to neat.exe is the fallback. The engine built from the release in use is saved to
+`%LOCALAPPDATA%\NEAT\ads-cache\engine.bin` (about 40 MB), so the next start does not read the
+lists again. For this the `neat-filters` releases must be public.
+
+Settings (`settings.json`, browser closed):
+`"Ads": { "On": true, "Off": ["example.com"], "Update": true, "UpdateHours": 6 }`.
+`On: false` switches the blocker off; `Off` lists hosts where it does nothing; `Update: false` keeps
+the lists that are there; `UpdateHours` is how often to look (1 to 168).
 
 ## Where data is saved
 

@@ -29,6 +29,23 @@ internal static class Native
     public static extern IntPtr neat_engine_create(
         [MarshalAs(UnmanagedType.LPUTF8Str)] string dir, out IntPtr error);
 
+    /// <summary>Like neat_engine_create, but uses the engine cache at cachePath when it was written for the same key. Dll 0.2.0 and later.</summary>
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr neat_engine_load(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string dir,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string cachePath,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string key,
+        out int fromCache,
+        out IntPtr error);
+
+    /// <summary>Writes the engine cache for key to path. 0 = written. Dll 0.2.0 and later.</summary>
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int neat_engine_save(
+        IntPtr engine,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string key,
+        out IntPtr error);
+
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     public static extern void neat_engine_free(IntPtr engine);
 

@@ -42,12 +42,37 @@ internal sealed class Adblock
     public bool IsOff(string? host) =>
         !On || (host is not null && App.Cfg.Cur.Ads.Off.Contains(host, StringComparer.OrdinalIgnoreCase));
 
+    /// <summary>Where releases are looked for: the one next to neat.exe and the ones downloaded later.</summary>
+    private static readonly FilterStore Store = new(
+        Path.Combine(AppContext.BaseDirectory, "filters"),
+        Path.Combine(Env.Root, "filters-dl"));
+
+    /// <summary>The saved engine of the release in use, so the next start can skip reading the lists.</summary>
+    private static readonly string CachePath = Path.Combine(Env.Root, "ads-cache", "engine.bin");
+
+    private static readonly HttpClient Http = MakeHttp();
+
+    private static HttpClient MakeHttp()
+    {
+        var h = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        h.DefaultRequestHeaders.UserAgent.ParseAdd("NEAT-Browser-filter-update");
+        return h;
+    }
+
+    /// <summary>Folder of the release in use.</summary>
+    private string _dir = string.Empty;
+
+    /// <summary>What the list updates did last, for the log and for a settings page later.</summary>
+    public string UpdateStatus { get; private set; } = "not checked yet";
+
     /// <summary>
     /// Builds the engine on a background thread. Never throws: a missing dll, a damaged folder or
     /// a refusal of the engine is written to the log and the browser just runs without blocking.
+    /// Then, unless settings turn it off, keeps looking for newer lists in the background.
     /// </summary>
-    public Task Start() => Task.Run(() =>
+    public Task Start() => Task.Run(async () =>
     {
+        var dllOk = false;
         try
         {
             AdRequestLog.Start(App.Cfg.Cur.Ads.Log);
@@ -58,22 +83,24 @@ internal sealed class Adblock
                 return;
             }
 
-            var dir = Path.Combine(AppContext.BaseDirectory, "filters");
-            if (!Directory.Exists(dir))
-            {
-                Log.Write("ads", "no filters folder next to neat.exe, blocker off");
-                return;
-            }
-
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            var version = FilterDir.Verify(dir);
-            var engine = AdsEngine.Create(dir);
-
-            Version = version;
-            var old = Interlocked.Exchange(ref _engine, engine);
-            old?.Dispose();
-
-            Log.Write("ads", $"filters {version} loaded in {clock.ElapsedMilliseconds} ms");
+            var best = Store.Best(m => Log.Write("ads", m));
+            if (best is null)
+            {
+                // Possibly the first run of a build without bundled lists: the updater below can fetch them.
+                Log.Write("ads", "no usable filters next to neat.exe or downloaded yet");
+                dllOk = true;
+            }
+            else
+            {
+                var (dir, version) = best.Value;
+                var engine = Build(dir, out var fromCache);
+                dllOk = true;
+                Install(engine, dir, version);
+                Log.Write("ads", $"filters {version} loaded in {clock.ElapsedMilliseconds} ms" + (fromCache ? " (from the saved engine)" : ""));
+                if (!fromCache)
+                    SaveEngineLater(engine, dir);
+            }
         }
         catch (DllNotFoundException ex)
         {
@@ -82,12 +109,108 @@ internal sealed class Adblock
         catch (Exception ex)
         {
             Log.Error("ads", ex, "could not start the blocker");
+            dllOk = !(ex is DllNotFoundException);
         }
         finally
         {
             _done.TrySetResult();
         }
+
+        if (dllOk && On)
+            await UpdateLoop();
     });
+
+    /// <summary>The engine for a release folder: from the saved engine when it belongs to it, else from the lists.</summary>
+    private static AdsEngine Build(string dir, out bool fromCache)
+    {
+        FilterDir.Verify(dir);
+        return AdsEngine.Load(dir, CachePath, FilterDir.ManifestKey(dir), out fromCache);
+    }
+
+    /// <summary>Makes an engine the one in use and lets go of the one before.</summary>
+    private void Install(AdsEngine engine, string dir, string version)
+    {
+        _dir = dir;
+        Version = version;
+        var old = Interlocked.Exchange(ref _engine, engine);
+
+        // A request may be inside a call on the old engine right now: it is let go a little later.
+        if (old is not null)
+            _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => old.Dispose());
+    }
+
+    /// <summary>Saves the engine on another thread, a little later so it does not compete with the first pages.</summary>
+    private static void SaveEngineLater(AdsEngine engine, string dir)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10));
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var ok = engine.SaveCache(CachePath, FilterDir.ManifestKey(dir));
+                Log.Write("ads", ok ? $"engine saved in {clock.ElapsedMilliseconds} ms" : "the engine could not be saved (the next start reads the lists again)");
+            }
+            catch (Exception ex)
+            {
+                Log.Write("ads", "the engine could not be saved: " + ex.Message);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Looks for a newer release shortly after start and then every few hours, for as long as the
+    /// app runs. A failure is only logged (and tried again sooner than the usual wait); the lists
+    /// in use stay as they are until a complete, verified newer release is there.
+    /// </summary>
+    private async Task UpdateLoop()
+    {
+        var prefs = App.Cfg.Cur.Ads;
+        if (!prefs.Update)
+        {
+            UpdateStatus = "switched off in settings";
+            return;
+        }
+
+        var every = TimeSpan.FromHours(Math.Clamp(prefs.UpdateHours, 1, 168));
+        var updater = new FilterUpdater(Http, prefs.UpdateUrl, Store, m => Log.Write("ads", m));
+
+        // The first pages come first.
+        await Task.Delay(TimeSpan.FromSeconds(30));
+        while (true)
+        {
+            var wait = every;
+            try
+            {
+                var dir = await updater.CheckAsync(Version, CancellationToken.None);
+                if (dir is null)
+                {
+                    UpdateStatus = $"up to date ({Version}), checked {DateTime.Now:HH:mm}";
+                }
+                else
+                {
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    var (engine, fromCache) = await Task.Run(() => (Build(dir, out var c), c));
+                    var version = FilterDir.ReadVersion(dir) ?? string.Empty;
+                    Install(engine, dir, version);
+                    UpdateStatus = $"updated to {version} at {DateTime.Now:HH:mm}";
+                    Log.Write("ads", $"now using filters {version} (built in {clock.ElapsedMilliseconds} ms{(fromCache ? ", from the saved engine" : "")})");
+                    if (!fromCache)
+                        SaveEngineLater(engine, dir);
+
+                    Store.CleanUp(new[] { _dir }, m => Log.Write("ads", m));
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus = "could not check: " + ex.Message;
+                Log.Write("ads", "list update failed: " + ex.Message);
+                wait = every < TimeSpan.FromMinutes(30) ? every : TimeSpan.FromMinutes(30);
+            }
+
+            await Task.Delay(wait);
+        }
+    }
 
     /// <summary>Completes when the engine is built (or failed), or after the time given.</summary>
     public Task WhenReady(TimeSpan max) => Task.WhenAny(_done.Task, Task.Delay(max));

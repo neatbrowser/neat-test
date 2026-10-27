@@ -1,5 +1,7 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using neat;
 
 // Self-check of the ad blocker's plain-code pieces. Plain asserts, no test package: one line per
@@ -19,6 +21,8 @@ internal static class Program
         Run("cosmetic JSON is read, junk gives nothing", CosmeticJson);
         Run("page script gets its words filled in", PageScript);
         Run("a filter folder is checked against its manifest", FilterFolder);
+        Run("a newer release is downloaded, checked and chosen", Updater);
+        Run("version names and clean-up of old releases", Store);
 
         Console.WriteLine(_failed == 0 ? $"{_ran} checks passed" : $"{_failed} of {_ran} checks FAILED");
         return _failed == 0 ? 0 : 1;
@@ -144,6 +148,140 @@ internal static class Program
         finally
         {
             Directory.Delete(dir, true);
+        }
+    }
+
+    // ---- list updates ----
+
+    private sealed class Fake : HttpMessageHandler
+    {
+        public readonly Dictionary<string, byte[]> Pages = new();
+        public readonly List<string> Asked = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
+        {
+            var url = r.RequestUri!.ToString();
+            Asked.Add(url);
+            return Task.FromResult(Pages.TryGetValue(url, out var b)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(b) }
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
+    }
+
+    private static string Sha(byte[] b) => Convert.ToHexString(SHA256.HashData(b)).ToLowerInvariant();
+
+    private static byte[] ManifestJson(string version, params (string Name, string Text)[] files) =>
+        JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            schema = 1,
+            version,
+            files = files.Select(f => new { name = f.Name, kind = "list", sha256 = Sha(Encoding.UTF8.GetBytes(f.Text)) }).ToArray(),
+        });
+
+    private static void WriteRelease(string dir, string version, params (string Name, string Text)[] files)
+    {
+        Directory.CreateDirectory(dir);
+        foreach (var (n, t) in files)
+            File.WriteAllText(Path.Combine(dir, n), t);
+
+        File.WriteAllBytes(Path.Combine(dir, "manifest.json"), ManifestJson(version, files));
+    }
+
+    /// <summary>Makes the fake server describe a release (the API answer, the manifest, the files).</summary>
+    private static void Serve(Fake f, string version, params (string Name, string Text)[] files)
+    {
+        var assets = files.Select(x => x.Name).Append("manifest.json")
+            .Select(n => new { name = n, browser_download_url = "https://dl.test/" + n }).ToArray();
+        f.Pages["https://api.test/release"] = JsonSerializer.SerializeToUtf8Bytes(new { assets });
+        f.Pages["https://dl.test/manifest.json"] = ManifestJson(version, files);
+        foreach (var (n, t) in files)
+            f.Pages["https://dl.test/" + n] = Encoding.UTF8.GetBytes(t);
+    }
+
+    private static string TempDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "adscheck-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static void Updater()
+    {
+        var tmp = TempDir();
+        try
+        {
+            var bundled = Path.Combine(tmp, "filters");
+            var root = Path.Combine(tmp, "dl");
+            WriteRelease(bundled, "2026.1.1.0000", ("a.txt", "||a.test^\n"), ("b.txt", "||b.test^\n"));
+            var store = new FilterStore(bundled, root);
+            Is("2026.1.1.0000", store.Best()!.Value.Version, "only the bundled release exists");
+
+            var fake = new Fake();
+            using var http = new HttpClient(fake);
+            var up = new FilterUpdater(http, "https://api.test/release", store, _ => { });
+
+            Serve(fake, "2026.1.2.0000", ("a.txt", "||a.test^\n"), ("c.txt", "||c.test^\n"));
+            var got = up.CheckAsync("2026.1.1.0000", default).GetAwaiter().GetResult();
+            Is<string?>(Path.Combine(root, "2026.1.2.0000"), got, "the new release's folder");
+            Is("||c.test^\n", File.ReadAllText(Path.Combine(got!, "c.txt")), "downloaded file");
+            Is("||a.test^\n", File.ReadAllText(Path.Combine(got!, "a.txt")), "reused file");
+            Is(false, fake.Asked.Contains("https://dl.test/a.txt"), "a list that did not change is not downloaded again");
+            Is("2026.1.2.0000", store.Best()!.Value.Version, "the downloaded release is the best one now");
+            Is(0, Directory.GetDirectories(root).Count(d => Path.GetFileName(d).StartsWith('.')), "no unfinished folder is left");
+
+            Is<string?>(null, up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "nothing newer than the one in use");
+            Is<string?>(null, up.CheckAsync("2026.2.0.0000", default).GetAwaiter().GetResult(), "an older release is never taken");
+
+            // A file that arrives altered is refused, and nothing of the release stays behind.
+            Serve(fake, "2026.1.3.0000", ("c.txt", "||c3.test^\n"));
+            fake.Pages["https://dl.test/c.txt"] = Encoding.UTF8.GetBytes("||evil.test^\n");
+            Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "altered download");
+            Is(false, Directory.Exists(Path.Combine(root, "2026.1.3.0000")), "the refused release is not visible");
+            Is(0, Directory.GetDirectories(root).Count(d => Path.GetFileName(d).StartsWith('.')), "a refused download leaves no unfinished folder");
+
+            // A version that tries to leave the folder is refused.
+            Serve(fake, "../evil", ("c.txt", "||c.test^\n"));
+            Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "unsafe version");
+
+            // A release the server does not have.
+            fake.Pages.Remove("https://api.test/release");
+            Throws(() => up.CheckAsync("2026.1.2.0000", default).GetAwaiter().GetResult(), "release not found");
+
+            // A damaged download is skipped: the bundled release is used again.
+            File.WriteAllText(Path.Combine(root, "2026.1.2.0000", "c.txt"), "damaged");
+            Is("2026.1.1.0000", store.Best()!.Value.Version, "a damaged download falls back to the bundled release");
+        }
+        finally
+        {
+            Directory.Delete(tmp, true);
+        }
+    }
+
+    private static void Store()
+    {
+        Is(true, FilterStore.IsSafeVersion("2026.10.26.0456"), "usual version");
+        Is(false, FilterStore.IsSafeVersion("../x"), "path in version");
+        Is(false, FilterStore.IsSafeVersion("a/b"), "slash in version");
+        Is(false, FilterStore.IsSafeVersion(".hidden"), "leading dot");
+        Is(false, FilterStore.IsSafeVersion(""), "empty version");
+        Is(false, FilterStore.IsSafeVersion(new string('1', 41)), "long version");
+
+        var tmp = TempDir();
+        try
+        {
+            var root = Path.Combine(tmp, "dl");
+            foreach (var v in new[] { "2025.1.1.0000", "2025.1.2.0000", "2026.1.1.0000", "2026.1.2.0000" })
+                WriteRelease(Path.Combine(root, v), v, ("a.txt", "||" + v + ".test^\n"));
+
+            var store = new FilterStore(Path.Combine(tmp, "none"), root);
+            store.CleanUp(new[] { Path.Combine(root, "2025.1.1.0000") });
+
+            var left = Directory.GetDirectories(root).Select(d => Path.GetFileName(d)).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            Is("2025.1.1.0000,2026.1.1.0000,2026.1.2.0000", string.Join(",", left!), "the newest two and the one in use stay");
+        }
+        finally
+        {
+            Directory.Delete(tmp, true);
         }
     }
 

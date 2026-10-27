@@ -109,4 +109,16 @@ public sealed class AdPrefs
     /// once at start, so it applies after a restart.
     /// </summary>
     public bool Log { get; set; }
+
+    /// <summary>
+    /// True lets the blocker look for newer filter lists by itself and use them (the lists that
+    /// ship with the app are from the day it was built). Read once at start.
+    /// </summary>
+    public bool Update { get; set; } = true;
+
+    /// <summary>Hours between two looks for newer lists (1 to 168). The lists themselves are rebuilt every 6 hours.</summary>
+    public int UpdateHours { get; set; } = 6;
+
+    /// <summary>Where the newest release is described: the GitHub API address of the neat-filters "latest" release.</summary>
+    public string UpdateUrl { get; set; } = "https://api.github.com/repos/neatbrowser/neat-filters/releases/latest";
 }

@@ -60,6 +60,56 @@ internal static class FilterDir
         return version;
     }
 
+    /// <summary>
+    /// The release's version as its manifest states it, or null when there is no readable manifest.
+    /// Nothing else is checked: use <see cref="Verify"/> before trusting the folder.
+    /// </summary>
+    public static string? ReadVersion(string dir)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "manifest.json")));
+            return doc.RootElement.ValueKind == JsonValueKind.Object ? Text(doc.RootElement, "version") : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A hash of the manifest, which holds the hash of every file: the same value means the same
+    /// release. Used to tell whether a saved engine belongs to the folder.
+    /// </summary>
+    public static string ManifestKey(string dir) =>
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(dir, "manifest.json")))).ToLowerInvariant();
+
+    /// <summary>The names and hashes a folder's manifest lists, or an empty map when it cannot be read.</summary>
+    public static Dictionary<string, string> Hashes(string dir)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "manifest.json")));
+            if (doc.RootElement.TryGetProperty("files", out var files) && files.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var f in files.EnumerateArray())
+                {
+                    var name = Text(f, "name");
+                    var sha = Text(f, "sha256");
+                    if (name.Length > 0 && sha.Length > 0)
+                        map[name] = sha.ToLowerInvariant();
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // an unreadable manifest lists nothing
+        }
+
+        return map;
+    }
+
     private static string Text(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? string.Empty : string.Empty;
 }
