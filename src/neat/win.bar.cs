@@ -68,7 +68,7 @@ public sealed partial class Win
         var k = root.XamlRoot.RasterizationScale;
         var all = new List<RectInt32>();
 
-        foreach (var b in new FrameworkElement[] { tog, back, fwd, reload, copy, domb, star })
+        foreach (var b in new FrameworkElement[] { tog, back, fwd, reload, blk, copy, domb, star })
         {
             if (b.ActualWidth <= 0 || b.ActualHeight <= 0)
                 continue;
@@ -99,6 +99,9 @@ public sealed partial class Win
     {
         dom.Text = Dom(tab.Src);
         ToolTipService.SetToolTip(domb, string.IsNullOrEmpty(tab.Src) ? "Search or enter address (Ctrl+L)" : tab.Src);
+
+        // The Blocker panel and its chip are about the page shown now.
+        BlkRefresh();
     }
 
     /// <summary>"https://www.example.com/a/b" becomes "example.com"; anything else is shown as it is.</summary>

@@ -21,6 +21,12 @@ internal static class AdUrl
         return u.IdnHost.ToLowerInvariant();
     }
 
+    /// <summary>True when the entry <paramref name="off"/> of the person's "blocker off" list is this host or a parent of it.</summary>
+    public static bool Covers(string off, string host) =>
+        off.Length > 0
+        && (host.Equals(off, StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith("." + off, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>The address without its #fragment, for comparing two addresses of one navigation.</summary>
     public static string NoHash(string? url)
     {

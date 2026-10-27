@@ -170,6 +170,9 @@ public sealed partial class Win
 
         // The Library's panel, and the page being pushed aside for it (win.lib.cs).
         LibLayout();
+
+        // The Blocker panel stays at the page's corner, wherever the page starts now (win.blk.cs).
+        BlkPlace();
     }
 
     /// <summary>

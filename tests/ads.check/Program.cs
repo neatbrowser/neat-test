@@ -60,6 +60,11 @@ internal static class Program
 
     private static void Hosts()
     {
+        Is(true, AdUrl.Covers("example.com", "example.com"), "same host is covered");
+        Is(true, AdUrl.Covers("example.com", "WWW.Example.com"), "a subdomain is covered, any case");
+        Is(false, AdUrl.Covers("example.com", "badexample.com"), "a longer name that only ends the same is not covered");
+        Is(false, AdUrl.Covers("www.example.com", "example.com"), "a parent is not covered by its subdomain");
+        Is(false, AdUrl.Covers("", "example.com"), "an empty entry covers nothing");
         Is<string?>("example.com", AdUrl.Host("https://Example.COM:8080/a?b#c"), "plain host");
         Is<string?>("xn--bcher-kva.example", AdUrl.Host("https://bücher.example/"), "idn host is punycode");
         Is<string?>(null, AdUrl.Host("file:///c:/x"), "file");

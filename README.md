@@ -84,6 +84,7 @@ src/neat/
   ads/pagejs.cs     fills in ads/page.js for one host
   ads/page.js       the script every page gets: scriptlets, hiding by style sheet, generic rules by class and id
   ads/blockpage.cs  the warning shown instead of a page that a page rule ($document / $all) stops; "Continue anyway" opens it
+  win.blk.cs        NEAT Blocker's chip in the title bar ("Blocked: N", beside Reload) and its panel (this page, in total, a switch for this site, the lists in use)
   ads/filterupdate.cs  where releases live (FilterStore) and the list updater (FilterUpdater): download, check, switch
   ads/requestlog.cs  optional one-line-per-request log (ads-requests.tsv), for finding out why a host got through
   ads/adurl.cs, dataurl.cs, reqtype.cs, tabads.cs   small helpers: addresses, data: URLs, request types, per-tab state
@@ -116,6 +117,12 @@ restart. Releases are kept in `%LOCALAPPDATA%\NEAT\filters-dl\<version>` (the ne
 release next to neat.exe is the fallback. The engine built from the release in use is saved to
 `%LOCALAPPDATA%\NEAT\ads-cache\engine.bin` (about 40 MB), so the next start does not read the
 lists again. For this the `neat-filters` releases must be public.
+
+NEAT Blocker panel: the chip "Blocked: N" in the title bar, beside Reload, shows the total stopped
+since NEAT started. Clicking it opens a panel at the page's top-left corner (it moves with the page
+when the sidebar is docked or put away) with the count for this page and in total, a switch for the
+blocker on this site (it adds the site to `Off` and reloads the page) and the filter version.
+A site in `Off` also covers its subdomains: `example.com` switches the blocker off on `www.example.com`.
 
 Settings (`settings.json`, browser closed):
 `"Ads": { "On": true, "Off": ["example.com"], "Update": true, "UpdateHours": 6 }`.

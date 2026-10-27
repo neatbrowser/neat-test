@@ -38,9 +38,28 @@ internal sealed class Adblock
     /// <summary>Settings > the blocker as a whole is on.</summary>
     public bool On => App.Cfg.Cur.Ads.On;
 
-    /// <summary>The blocker is switched off for this host (the person's own list).</summary>
-    public bool IsOff(string? host) =>
-        !On || (host is not null && App.Cfg.Cur.Ads.Off.Contains(host, StringComparer.OrdinalIgnoreCase));
+    /// <summary>
+    /// The blocker is switched off for this host (the person's own list). A listed site covers its
+    /// subdomains: "example.com" in the list also switches it off on "www.example.com".
+    /// </summary>
+    public bool IsOff(string? host)
+    {
+        if (!On)
+            return true;
+
+        if (host is null)
+            return false;
+
+        // The list is replaced as a whole when it changes, never edited in place, so this read is safe from any thread.
+        foreach (var off in App.Cfg.Cur.Ads.Off)
+        {
+            if (AdUrl.Covers(off, host))
+                return true;
+        }
+
+        return false;
+    }
+
 
     /// <summary>Where releases are looked for: the one next to neat.exe and the ones downloaded later.</summary>
     private static readonly FilterStore Store = new(

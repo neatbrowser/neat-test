@@ -81,6 +81,21 @@
                 <Button x:Name="reload" Click="reload_Click" Height="28" Padding="8,0" Background="Transparent" BorderThickness="0">
                     <FontIcon Glyph="&#xE72C;" FontSize="14"/>
                 </Button>
+
+                <!-- NEAT Blocker: the total of requests stopped since NEAT started. Opens the Blocker
+                     panel (blkpanel below, win.blk.cs). Dimmed while the blocker is off for the page. -->
+                <Button
+                    x:Name="blk"
+                    Click="blk_Click"
+                    Height="26"
+                    Margin="4,0,0,0"
+                    Padding="10,0"
+                    CornerRadius="8"
+                    Background="#1AFFFFFF"
+                    BorderThickness="0"
+                    ToolTipService.ToolTip="NEAT Blocker">
+                    <TextBlock x:Name="blktxt" Text="Blocked: 0" FontSize="12"/>
+                </Button>
             </StackPanel>
 
             <!-- Address chip: copy link, the site's domain, bookmark star. -->
@@ -164,6 +179,86 @@
                 Background="#FF0F0F0F">
                 <!-- Every tab's web view lives here; only the selected one is visible. -->
                 <Grid x:Name="host"/>
+            </Border>
+
+            <!-- NEAT Blocker panel (win.blk.cs). It sits in the page's column, a few pixels inside the page's
+                 top-left corner, so it moves with the page when the sidebar is docked or put away, and
+                 with the page when the Library pushes it aside. The sidebar, drawn later, floats over it.
+                 Collapsed until the chip in the title bar opens it. -->
+            <Border
+                x:Name="blkpanel"
+                Grid.Column="1"
+                Width="292"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="14,8,0,0"
+                Padding="16,12,16,14"
+                CornerRadius="14"
+                Background="#FF161618"
+                BorderBrush="#FF2E2E32"
+                BorderThickness="1"
+                Visibility="Collapsed"
+                KeyDown="blk_KeyDown">
+                <StackPanel Spacing="10">
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="NEAT Blocker" FontSize="15" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="blkhost" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                        <Button
+                            Click="blkx_Click"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Width="28"
+                            Height="28"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Close">
+                            <FontIcon Glyph="&#xE711;" FontSize="10"/>
+                        </Button>
+                    </Grid>
+
+                    <Border Height="1" Background="#1FFFFFFF"/>
+
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="76"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="blkpage" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#FFFF5C39" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="1" Text="Blocked on this page" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="76"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="blkall" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#FF3AA0FF" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="1" Text="Blocked in total" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Border Height="1" Background="#1FFFFFFF"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Blocker on this site" VerticalAlignment="Center"/>
+                        <ToggleSwitch
+                            x:Name="blkon"
+                            Grid.Column="1"
+                            MinWidth="0"
+                            Margin="0,0,-8,0"
+                            OnContent=""
+                            OffContent=""
+                            Toggled="blkon_Toggled"/>
+                    </Grid>
+
+                    <TextBlock x:Name="blkinfo" FontSize="11" Opacity="0.55" TextWrapping="Wrap"/>
+                </StackPanel>
             </Border>
 
             <!-- The Library (lib/libview.xaml), a panel of its own, as in Zen: it is not part of the
